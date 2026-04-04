@@ -19,6 +19,7 @@ PORT = "/dev/ttyUSB0"
 BAUD = 9600
 SLAVE_ID = 1
 POLL_INTERVAL = 2.0  # seconds
+MODBUS_REGISTER_COUNT = 8
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
@@ -136,7 +137,17 @@ def update_readings(names, enabled):
     READINGS = []
     for i, (_, unit, scale, min_w, max_w) in enumerate(DEFAULT_READINGS):
         if i < len(names) and i < len(enabled) and enabled[i]:
-            READINGS.append((names[i], unit, scale, min_w, max_w))
+            READINGS.append((i, names[i], unit, scale, min_w, max_w))
+
+def get_sensor_value_by_default_index(values, default_index):
+    """Return a sensor value by its original DEFAULT_READINGS index."""
+    if not values:
+        return None
+
+    for idx, (source_index, *_rest) in enumerate(READINGS):
+        if source_index == default_index and idx < len(values):
+            return values[idx]
+    return None
 
 def calculate_crop_score(crop: dict, moisture: float, temp: float, ec: float, ph: float, nitrogen: float) -> float:
     """Score a crop based on current soil conditions (0-100)."""
@@ -201,8 +212,13 @@ def read_registers():
             return None
 
         values = []
-        for i, (_, _, scale, _, _) in enumerate(READINGS):
-            raw = (resp[3 + i * 2] << 8) | resp[4 + i * 2]
+        for source_index, _, _, scale, _, _ in READINGS:
+            if source_index >= MODBUS_REGISTER_COUNT:
+                values.append(None)
+                continue
+
+            raw_offset = 3 + source_index * 2
+            raw = (resp[raw_offset] << 8) | resp[raw_offset + 1]
             values.append(raw / scale if scale > 1 else float(raw))
         return values
     except Exception as e:
@@ -226,7 +242,7 @@ def sensor_worker():
         now = time.time()
         if now - last_read >= POLL_INTERVAL:
             values = read_registers()
-            if values:
+            if values is not None:
                 current_values = values
                 last_update = datetime.now().isoformat()
                 timestamp = datetime.now().strftime("%H:%M:%S")
@@ -254,8 +270,8 @@ def get_settings():
     return jsonify({
         'sensor_sets': SENSOR_SETS,
         'active_set': ACTIVE_SET,
-        'readings': [{'name': name, 'unit': unit, 'min': min_w, 'max': max_w} 
-                     for name, unit, _, min_w, max_w in READINGS],
+        'readings': [{'name': name, 'unit': unit, 'min': min_w, 'max': max_w}
+                     for _, name, unit, _, min_w, max_w in READINGS],
         'default_readings': [{'name': name, 'unit': unit} for name, unit, *_ in DEFAULT_READINGS]
     })
 
@@ -263,25 +279,27 @@ def get_settings():
 def get_data():
     """Get current sensor data."""
     sensor_values = []
-    if current_values:
-        for (name, unit, _, min_w, max_w), value in zip(READINGS, current_values):
+    if current_values is not None:
+        for (_, name, unit, _, min_w, max_w), value in zip(READINGS, current_values):
             sensor_values.append({
                 'name': name,
                 'unit': unit,
                 'value': value,
                 'min': min_w,
                 'max': max_w,
-                'status': 'good' if min_w <= value <= max_w else 'warning'
+                'status': 'unavailable' if value is None else ('good' if min_w <= value <= max_w else 'warning')
             })
     
     # Calculate crop recommendations
     crops = []
-    if current_values and len(current_values) >= 5:
-        moisture = current_values[0]
-        temp = current_values[1]
-        ec = current_values[2] / 1000 if current_values[2] > 0 else 0.5
-        ph = current_values[3]
-        nitrogen = current_values[4]
+    moisture = get_sensor_value_by_default_index(current_values, 0)
+    temp = get_sensor_value_by_default_index(current_values, 1)
+    ec_raw = get_sensor_value_by_default_index(current_values, 2)
+    ph = get_sensor_value_by_default_index(current_values, 3)
+    nitrogen = get_sensor_value_by_default_index(current_values, 4)
+
+    if None not in (moisture, temp, ec_raw, ph, nitrogen):
+        ec = ec_raw / 1000 if ec_raw > 0 else 0.5
         
         scores = {}
         for crop_name, crop_data in CROPS.items():

@@ -194,7 +194,7 @@ function renderHistory(history, values) {
                 const val = entry[i];
                 const formattedVal = typeof val === 'number'
                     ? (val % 1 !== 0 ? val.toFixed(1) : val.toFixed(0))
-                    : val;
+                    : '--';
                 html += `   ${reading.name.padEnd(12)} ${formattedVal} ${reading.unit}\n`;
             }
         });
@@ -208,7 +208,9 @@ function renderHistory(history, values) {
         html += '─'.repeat(65) + '\n';
         
         values.forEach((reading, i) => {
-            const vals = history.map(h => h[i]).filter(v => v !== undefined);
+            const vals = history
+                .map(h => h[i])
+                .filter(v => typeof v === 'number' && !Number.isNaN(v));
             if (vals.length > 0) {
                 const min = Math.min(...vals);
                 const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
