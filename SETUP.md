@@ -81,13 +81,13 @@ python3 -c "import serial; s=serial.Serial('/dev/ttyUSB0', 9600); print('✓ Con
 cd ~/soil-sensor
 source venv/bin/activate
 
-# Run Flask (binds to 0.0.0.0:5000 for network access)
+# Run Flask (binds to 0.0.0.0:5001 for network access)
 python3 app.py
 ```
 
 Expected output:
 ```
- * Running on http://0.0.0.0:5000
+ * Running on http://0.0.0.0:5001
  * Press CTRL+C to quit
 ```
 
@@ -95,12 +95,12 @@ Expected output:
 
 **From Raspberry Pi (local):**
 ```
-http://localhost:5000
+http://localhost:5001
 ```
 
 **From another device on network:**
 ```
-http://<RASPBERRY_PI_IP>:5000
+http://<RASPBERRY_PI_IP>:5001
 ```
 
 Get IP address:
@@ -243,7 +243,7 @@ soil-sensor/
 | Memory | ~150MB | ~50MB |
 | CPU usage | Higher | Lower |
 | Network access | No | Yes (local network) |
-| Port | N/A | 5000 |
+| Port | N/A | 5001 |
 
 ## Network Access
 
@@ -251,14 +251,14 @@ soil-sensor/
 
 1. Connect Raspberry Pi to WiFi
 2. Find IP: `hostname -I`
-3. Access from phone/PC: `http://<IP>:5000`
+3. Access from phone/PC: `http://<IP>:5001`
 
 ### Port Forwarding (Caution)
 
 If exposing to internet:
 ```bash
 # Only if behind firewall!
-ssh -L 5000:localhost:5000 pi@<YOUR_DEVICE_IP>
+ssh -L 5001:localhost:5001 pi@<YOUR_DEVICE_IP>
 ```
 
 **Warning**: Don't expose directly to internet without authentication!
@@ -290,7 +290,7 @@ sudo systemctl restart soil-sensor
    - Use production WSGI server if scaling:
      ```bash
      pip install gunicorn
-     gunicorn -w 1 -b 0.0.0.0:5000 app:app
+    gunicorn -w 1 -b 0.0.0.0:5001 app:app
      ```
 
 4. **Optimize browser**:
@@ -312,7 +312,7 @@ sudo systemctl restart soil-sensor
 
 Edit `app.py`:
 ```python
-app.run(host='0.0.0.0', port=5000, debug=True)  # DON'T USE IN PRODUCTION
+app.run(host='0.0.0.0', port=5001, debug=True)  # DON'T USE IN PRODUCTION
 ```
 
 ### Monitor Real-time

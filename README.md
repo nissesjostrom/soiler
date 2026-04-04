@@ -31,7 +31,7 @@ pip3 install Flask pyserial
 python3 app.py
 ```
 
-Access browser: **http://localhost:5000**
+Access browser: **http://localhost:5001**
 
 ### Using Start Script
 
@@ -47,7 +47,7 @@ chmod +x start.sh
 docker build -t soil-sensor .
 
 # Run container
-docker run -p 5000:5000 \
+docker run -p 5001:5001 \
   --device=/dev/ttyUSB0:/dev/ttyUSB0 \
   soil-sensor
 ```
@@ -92,7 +92,7 @@ hostname -I
 
 ### Access from Another Device
 
-- **iPhone/Android**: Open browser → `http://<PI_IP>:5000`
+- **iPhone/Android**: Open browser → `http://<PI_IP>:5001`
 - **PC/Mac**: Same as above
 - **Network range**: 192.168.x.x (adjust for your WiFi)
 
@@ -216,7 +216,7 @@ sudo usermod -a -G dialout $(whoami)
 pip install gunicorn
 
 # Run with 1 worker (Pi Zero limitation)
-gunicorn -w 1 -b 0.0.0.0:5000 app:app
+gunicorn -w 1 -b 0.0.0.0:5001 app:app
 ```
 
 ### As systemd Service
@@ -229,7 +229,7 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 
 Edit `app.py`:
 ```python
-app.run(host='0.0.0.0', port=5000, debug=True)  # NOT for production
+app.run(host='0.0.0.0', port=5001, debug=True)  # NOT for production
 ```
 
 ### Monitor Logs

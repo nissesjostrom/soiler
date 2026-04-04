@@ -21,7 +21,7 @@ COPY templates/ templates/
 COPY static/ static/
 
 # Expose port
-EXPOSE 5000
+EXPOSE 5001
 
 # Set environment
 ENV PYTHONUNBUFFERED=1
@@ -29,7 +29,7 @@ ENV FLASK_APP=app.py
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/settings').read()" || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5001/api/settings').read()" || exit 1
 
 # Start application
 CMD ["python3", "app.py"]
