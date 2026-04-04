@@ -1,0 +1,86 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "PlatformIO: Build",
+			"type": "shell",
+			"command": "pio",
+			"args": [
+				"run"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": [],
+			"isBackground": false
+		},
+		{
+			"label": "PlatformIO: Upload",
+			"type": "shell",
+			"command": "pio",
+			"args": [
+				"run",
+				"-t",
+				"upload"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [],
+			"isBackground": false
+		},
+		{
+			"label": "PlatformIO: Monitor",
+			"type": "shell",
+			"command": "pio",
+			"args": [
+				"device",
+				"monitor",
+				"-b",
+				"115200",
+				"-p",
+				"/dev/ttyUSB0"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [],
+			"isBackground": true
+		},
+		{
+			"label": "PlatformIO: Monitor (Auto Port)",
+			"type": "shell",
+			"command": "pio",
+			"args": [
+				"device",
+				"monitor",
+				"-b",
+				"115200"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [],
+			"isBackground": true
+		},
+		{
+			"label": "PlatformIO: Upload + Monitor",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"PlatformIO: Upload",
+				"PlatformIO: Monitor"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "PlatformIO: Upload + Monitor (Auto Port)",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"PlatformIO: Upload",
+				"PlatformIO: Monitor (Auto Port)"
+			],
+			"problemMatcher": []
+		}
+	]
+}

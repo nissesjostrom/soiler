@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOIL SENSOR v2.0 — Web Edition</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <div class="title-left">
+                <button id="settingsBtn" class="btn-settings">⚙ SETTINGS</button>
+            </div>
+            <div class="title-center">
+                <h1>≡ SOIL SENSOR TERMINAL v2.0 ≡</h1>
+                <div class="set-selector-wrapper">
+                    <label for="setSelector">SET:</label>
+                    <select id="setSelector">
+                        <!-- Populated by JavaScript -->
+                    </select>
+                </div>
+            </div>
+            <div class="title-right">
+                <span id="statusBar">► INITIALIZING...</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left: Sensor Grid -->
+            <div class="left-panel">
+                <div class="sensor-grid" id="sensorGrid">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Right: Tabs (Crops & History) -->
+            <div class="right-panel">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="crops">🌾 CROPS</button>
+                    <button class="tab-btn" data-tab="history">📊 HISTORY</button>
+                </div>
+
+                <!-- Crops Tab -->
+                <div id="crops-tab" class="tab-content active">
+                    <div class="crops-box">
+                        <h2>🌾 CROP RECOMMENDATIONS 🌾</h2>
+                        <div id="cropsContent" class="crops-content">
+                            <p>⏳ Awaiting sensor data...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Tab -->
+                <div id="history-tab" class="tab-content">
+                    <div class="history-box">
+                        <h2>📊 SENSOR HISTORY (Max 10) 📊</h2>
+                        <div id="historyContent" class="history-content">
+                            <p>⏳ No readings yet...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙ SENSOR CONFIGURATION ⚙</h2>
+                <button class="modal-close" id="closeSettings">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Set Name -->
+                <div class="form-group">
+                    <label for="setNameInput">SET NAME:</label>
+                    <input type="text" id="setNameInput" placeholder="Enter set name">
+                </div>
+
+                <!-- Sensor Configuration -->
+                <div id="sensorConfigForm">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="saveSensorBtn" class="btn-save">💾 SAVE & APPLY</button>
+                <button id="resetSensorBtn" class="btn-reset">↺ RESET TO DEFAULTS</button>
+                <button id="closeSettingsBtn" class="btn-close">✗ CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
