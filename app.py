@@ -2,7 +2,7 @@
 """
 Soil Sensor Web Application — Flask
 Modbus RTU via USB CH340, Slave ID 1, 9600 baud
-Crop recommendations + 10-sample history with statistics
+Crop recommendations + time-range history graphing
 Running on Raspberry Pi Zero
 """
 
@@ -15,13 +15,14 @@ import time
 from datetime import datetime
 from collections import deque
 
-PORT = "/dev/ttyUSB0"
-BAUD = 9600
-SLAVE_ID = 1
-POLL_INTERVAL = 2.0  # seconds
-MODBUS_REGISTER_COUNT = 8
-
 app = Flask(__name__)
+
+HISTORY_RANGE_CONFIG = {
+    'day': {'maxlen': 288},
+    'week': {'maxlen': 168},
+    'month': {'maxlen': 31},
+    'year': {'maxlen': 12},
+}
 app.config['JSON_SORT_KEYS'] = False
 
 # Default sensor configuration (10 sensors total)
@@ -73,7 +74,8 @@ CROPS = {
 SENSOR_SETS = {}
 ACTIVE_SET = 0
 current_values = None
-reading_history = deque(maxlen=10)
+history_ranges = {name: deque(maxlen=config['maxlen']) for name, config in HISTORY_RANGE_CONFIG.items()}
+history_buckets = {name: None for name in HISTORY_RANGE_CONFIG}
 sensor_status = "► INITIALIZING..."
 last_update = None
 port = None
@@ -148,6 +150,95 @@ def get_sensor_value_by_default_index(values, default_index):
         if source_index == default_index and idx < len(values):
             return values[idx]
     return None
+
+def get_bucket_start(timestamp: datetime, range_name: str) -> datetime:
+    """Return normalized bucket start time for a history range."""
+    if range_name == 'day':
+        minute = (timestamp.minute // 5) * 5
+        return timestamp.replace(minute=minute, second=0, microsecond=0)
+    if range_name == 'week':
+        return timestamp.replace(minute=0, second=0, microsecond=0)
+    if range_name == 'month':
+        return timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+    if range_name == 'year':
+        return timestamp.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return timestamp.replace(second=0, microsecond=0)
+
+def format_bucket_label(timestamp: datetime, range_name: str) -> str:
+    """Format a display label for a history bucket."""
+    if range_name == 'day':
+        return timestamp.strftime('%H:%M')
+    if range_name == 'week':
+        return timestamp.strftime('%a %H:%M')
+    if range_name == 'month':
+        return timestamp.strftime('%d %b')
+    if range_name == 'year':
+        return timestamp.strftime('%b %Y')
+    return timestamp.isoformat(timespec='seconds')
+
+def create_history_bucket(bucket_start: datetime, values):
+    """Create an accumulation bucket for averaged history values."""
+    length = len(values)
+    return {
+        'timestamp': bucket_start,
+        'sums': [0.0] * length,
+        'counts': [0] * length,
+    }
+
+def add_values_to_bucket(bucket, values):
+    """Accumulate numeric values into a history bucket."""
+    for index, value in enumerate(values):
+        if isinstance(value, (int, float)):
+            bucket['sums'][index] += float(value)
+            bucket['counts'][index] += 1
+
+def serialize_bucket(bucket, range_name: str):
+    """Convert a bucket into API-safe averaged history data."""
+    averaged_values = []
+    for total, count in zip(bucket['sums'], bucket['counts']):
+        averaged_values.append(total / count if count else None)
+
+    return {
+        'timestamp': bucket['timestamp'].isoformat(),
+        'label': format_bucket_label(bucket['timestamp'], range_name),
+        'values': averaged_values,
+    }
+
+def add_history_sample(values, timestamp: datetime):
+    """Add one sample to all graph history ranges."""
+    global history_buckets
+
+    for range_name in HISTORY_RANGE_CONFIG:
+        bucket_start = get_bucket_start(timestamp, range_name)
+        bucket = history_buckets[range_name]
+
+        if bucket is None or bucket['timestamp'] != bucket_start:
+            if bucket is not None:
+                history_ranges[range_name].append(serialize_bucket(bucket, range_name))
+            bucket = create_history_bucket(bucket_start, values)
+            history_buckets[range_name] = bucket
+
+        add_values_to_bucket(bucket, values)
+
+def get_serialized_history_ranges():
+    """Return finalized history plus the current in-progress bucket."""
+    serialized = {}
+    for range_name in HISTORY_RANGE_CONFIG:
+        items = list(history_ranges[range_name])
+        bucket = history_buckets[range_name]
+        if bucket is not None:
+            items.append(serialize_bucket(bucket, range_name))
+        serialized[range_name] = items
+    return serialized
+
+def clear_history_ranges():
+    """Reset all stored history when sensor configuration changes."""
+    global history_ranges, history_buckets
+    history_ranges = {
+        name: deque(maxlen=config['maxlen'])
+        for name, config in HISTORY_RANGE_CONFIG.items()
+    }
+    history_buckets = {name: None for name in HISTORY_RANGE_CONFIG}
 
 def calculate_crop_score(crop: dict, moisture: float, temp: float, ec: float, ph: float, nitrogen: float) -> float:
     """Score a crop based on current soil conditions (0-100)."""
@@ -245,9 +336,7 @@ def sensor_worker():
             if values is not None:
                 current_values = values
                 last_update = datetime.now().isoformat()
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                history_entry = list(values) + [timestamp]
-                reading_history.append(history_entry)
+                add_history_sample(values, datetime.now())
                 sensor_status = "● Connected"
             else:
                 current_values = None
@@ -318,12 +407,15 @@ def get_data():
                 'value': crop_data['value']
             })
     
+    serialized_history_ranges = get_serialized_history_ranges()
+
     return jsonify({
         'status': sensor_status,
         'last_update': last_update,
         'values': sensor_values,
         'crops': crops,
-        'history': list(reading_history)
+        'history': serialized_history_ranges.get('day', []),
+        'history_ranges': serialized_history_ranges
     })
 
 @app.route('/api/set/<int:set_id>', methods=['POST'])
@@ -335,7 +427,7 @@ def set_active_set(set_id):
         save_sensor_sets()
         names, enabled = get_active_set_data()
         update_readings(names, enabled)
-        reading_history.clear()
+        clear_history_ranges()
         return jsonify({'success': True, 'active_set': ACTIVE_SET})
     return jsonify({'success': False}), 400
 
@@ -356,7 +448,7 @@ def update_config():
     save_sensor_sets()
     names, enabled = get_active_set_data()
     update_readings(names, enabled)
-    reading_history.clear()
+    clear_history_ranges()
     
     return jsonify({'success': True})
 
@@ -365,6 +457,7 @@ if __name__ == '__main__':
     load_sensor_sets()
     names, enabled = get_active_set_data()
     update_readings(names, enabled)
+    clear_history_ranges()
     
     # Start sensor worker thread
     serial_thread = threading.Thread(target=sensor_worker, daemon=True)

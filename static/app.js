@@ -6,9 +6,9 @@ let sensorReadings = [];
 let defaultReadings = [];
 let pollInterval;
 let graphSensorIndex = 0;
-let latestHistory = [];
+let latestHistory = { day: [], week: [], month: [], year: [] };
 let latestValues = [];
-let graphSampleLimit = 10;
+let graphRange = 'day';
 let selectedGraphSensors = [];
 
 const GRAPH_COLOR_PALETTE = [
@@ -34,8 +34,8 @@ function getGraphSelectionStorageKey() {
 }
 
 function loadGraphPreferences() {
-    const savedLimit = parseInt(localStorage.getItem('soilSensorGraphSampleLimit') || '10', 10);
-    graphSampleLimit = savedLimit === 5 ? 5 : 10;
+    const savedRange = localStorage.getItem('soilSensorGraphRange') || 'day';
+    graphRange = ['day', 'week', 'month', 'year'].includes(savedRange) ? savedRange : 'day';
 }
 
 function loadSelectedGraphSensors() {
@@ -108,7 +108,7 @@ function renderGraphSelector() {
 
     const rangeSelect = document.getElementById('graphRangeSelect');
     if (rangeSelect) {
-        rangeSelect.value = String(graphSampleLimit);
+        rangeSelect.value = graphRange;
     }
 }
 
@@ -299,11 +299,12 @@ async function updateSensorData() {
             document.getElementById('cropsContent').innerHTML = '<p>⏳ Awaiting sensor data...</p>';
         }
 
-        latestHistory = data.history || [];
+        latestHistory = data.history_ranges || { day: [], week: [], month: [], year: [] };
         latestValues = data.values || [];
 
         // Update graph
-        if (latestHistory.length > 0) {
+        const activeHistory = Array.isArray(latestHistory[graphRange]) ? latestHistory[graphRange] : [];
+        if (activeHistory.length > 0) {
             renderGraph(latestHistory, latestValues);
         } else {
             document.getElementById('graphContent').innerHTML = '<p>⏳ No graph data yet...</p>';
@@ -335,9 +336,19 @@ function formatGraphNumber(value) {
     return value % 1 !== 0 ? value.toFixed(1) : value.toFixed(0);
 }
 
-function renderGraph(history, values) {
+function getHistoryForSelectedRange(historyRanges) {
+    if (!historyRanges || typeof historyRanges !== 'object') {
+        return [];
+    }
+
+    const selectedHistory = historyRanges[graphRange];
+    return Array.isArray(selectedHistory) ? selectedHistory : [];
+}
+
+function renderGraph(historyRanges, values) {
     const graphContent = document.getElementById('graphContent');
     const graphStats = document.getElementById('graphStats');
+    const history = getHistoryForSelectedRange(historyRanges);
 
     if (!values.length) {
         graphContent.innerHTML = '<p>⏳ No enabled sensors...</p>';
@@ -350,16 +361,22 @@ function renderGraph(history, values) {
         renderGraphSelector();
     }
 
+    if (!history.length) {
+        graphContent.innerHTML = `<p>⏳ No ${graphRange} graph data yet...</p>`;
+        graphStats.textContent = `Awaiting ${graphRange} samples...`;
+        return;
+    }
+
     const visibleIndexes = selectedGraphSensors.filter(index => index >= 0 && index < values.length);
     const indexesToRender = visibleIndexes.length > 0 ? visibleIndexes : [graphSensorIndex];
-    const historyWindow = history.slice(-graphSampleLimit);
+    const historyWindow = history;
     const series = indexesToRender.map(index => {
         const reading = values[index];
         const color = getSensorColor(reading.name, index);
         const points = historyWindow.map((entry, sampleIndex) => ({
             index: sampleIndex,
-            time: entry[entry.length - 1],
-            value: entry[index]
+            time: entry.label || '',
+            value: Array.isArray(entry.values) ? entry.values[index] : null
         })).filter(point => typeof point.value === 'number' && !Number.isNaN(point.value));
 
         return { index, reading, color, points };
@@ -404,8 +421,11 @@ function renderGraph(history, values) {
     const xLabels = historyWindow.map((entry, index) => {
         const xDenominator = Math.max(historyWindow.length - 1, 1);
         const x = left + (index / xDenominator) * plotWidth;
-        return { x, time: entry[entry.length - 1] };
+        return { x, time: entry.label || '' };
     });
+
+    const maxVisibleLabels = graphRange === 'day' ? 8 : 7;
+    const labelStep = Math.max(1, Math.ceil(historyWindow.length / maxVisibleLabels));
 
     graphContent.innerHTML = `
         <svg class="graph-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="Multi-sensor graph">
@@ -430,7 +450,7 @@ function renderGraph(history, values) {
                 `;
             }).join('')}
             ${xLabels.map((label, index) => {
-                if (historyWindow.length > 6 && index !== 0 && index !== historyWindow.length - 1 && index % 2 !== 0) {
+                if (historyWindow.length > maxVisibleLabels && index !== 0 && index !== historyWindow.length - 1 && index % labelStep !== 0) {
                     return '';
                 }
                 return `<text x="${label.x}" y="${height - bottom + 20}" class="graph-axis-label" text-anchor="middle">${label.time}</text>`;
@@ -444,7 +464,7 @@ function renderGraph(history, values) {
         const latestValue = numericValues[numericValues.length - 1];
         const min = Math.min(...numericValues);
         const max = Math.max(...numericValues);
-        return `<span class="graph-stat-item" style="border-color: ${seriesItem.color}; color: ${seriesItem.color}">${seriesItem.reading.name}${seriesItem.reading.unit ? ` (${seriesItem.reading.unit})` : ''} | MIN ${formatGraphNumber(min)} | AVG ${formatGraphNumber(average)} | MAX ${formatGraphNumber(max)} | LAST ${formatGraphNumber(latestValue)}</span>`;
+        return `<span class="graph-stat-item" style="border-color: ${seriesItem.color}; color: ${seriesItem.color}">${seriesItem.reading.name}${seriesItem.reading.unit ? ` (${seriesItem.reading.unit})` : ''} | ${graphRange.toUpperCase()} | MIN ${formatGraphNumber(min)} | AVG ${formatGraphNumber(average)} | MAX ${formatGraphNumber(max)} | LAST ${formatGraphNumber(latestValue)}</span>`;
     }).join('');
 }
 
@@ -471,8 +491,8 @@ function setupEventListeners() {
     });
 
     document.getElementById('graphRangeSelect').addEventListener('change', (e) => {
-        graphSampleLimit = parseInt(e.target.value, 10) === 5 ? 5 : 10;
-        localStorage.setItem('soilSensorGraphSampleLimit', String(graphSampleLimit));
+        graphRange = ['day', 'week', 'month', 'year'].includes(e.target.value) ? e.target.value : 'day';
+        localStorage.setItem('soilSensorGraphRange', graphRange);
         renderGraph(latestHistory, latestValues);
     });
     
@@ -485,7 +505,7 @@ function setupEventListeners() {
             if (data.success) {
                 activeSet = setId;
                 await loadSettings();
-                latestHistory = [];
+                latestHistory = { day: [], week: [], month: [], year: [] };
                 latestValues = sensorReadings;
                 renderSetSelector();
                 renderSensorGrid();
@@ -551,7 +571,7 @@ async function saveConfig() {
         const data = await response.json();
         if (data.success) {
             await loadSettings();
-            latestHistory = [];
+            latestHistory = { day: [], week: [], month: [], year: [] };
             latestValues = sensorReadings;
             renderSetSelector();
             renderSensorGrid();
