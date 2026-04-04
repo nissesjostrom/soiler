@@ -17,6 +17,12 @@ from collections import deque
 
 app = Flask(__name__)
 
+PORT = "/dev/ttyUSB0"
+BAUD = 9600
+SLAVE_ID = 1
+POLL_INTERVAL = 2.0  # seconds
+MODBUS_REGISTER_COUNT = 8
+
 HISTORY_RANGE_CONFIG = {
     'day': {'maxlen': 288},
     'week': {'maxlen': 168},
