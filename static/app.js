@@ -6,7 +6,7 @@ let sensorReadings = [];
 let defaultReadings = [];
 let pollInterval;
 let graphSensorIndex = 0;
-let latestHistory = { day: [], week: [], month: [], year: [] };
+let latestHistory = { hour: [], day: [], week: [], month: [], year: [] };
 let latestValues = [];
 let graphRange = 'day';
 let selectedGraphSensors = [];
@@ -35,7 +35,7 @@ function getGraphSelectionStorageKey() {
 
 function loadGraphPreferences() {
     const savedRange = localStorage.getItem('soilSensorGraphRange') || 'day';
-    graphRange = ['day', 'week', 'month', 'year'].includes(savedRange) ? savedRange : 'day';
+    graphRange = ['hour', 'day', 'week', 'month', 'year'].includes(savedRange) ? savedRange : 'day';
 }
 
 function loadSelectedGraphSensors() {
@@ -299,7 +299,7 @@ async function updateSensorData() {
             document.getElementById('cropsContent').innerHTML = '<p>⏳ Awaiting sensor data...</p>';
         }
 
-        latestHistory = data.history_ranges || { day: [], week: [], month: [], year: [] };
+        latestHistory = data.history_ranges || { hour: [], day: [], week: [], month: [], year: [] };
         latestValues = data.values || [];
 
         // Update graph
@@ -424,7 +424,7 @@ function renderGraph(historyRanges, values) {
         return { x, time: entry.label || '' };
     });
 
-    const maxVisibleLabels = graphRange === 'day' ? 8 : 7;
+    const maxVisibleLabels = graphRange === 'hour' ? 6 : graphRange === 'day' ? 8 : 7;
     const labelStep = Math.max(1, Math.ceil(historyWindow.length / maxVisibleLabels));
 
     graphContent.innerHTML = `
@@ -491,7 +491,7 @@ function setupEventListeners() {
     });
 
     document.getElementById('graphRangeSelect').addEventListener('change', (e) => {
-        graphRange = ['day', 'week', 'month', 'year'].includes(e.target.value) ? e.target.value : 'day';
+        graphRange = ['hour', 'day', 'week', 'month', 'year'].includes(e.target.value) ? e.target.value : 'day';
         localStorage.setItem('soilSensorGraphRange', graphRange);
         renderGraph(latestHistory, latestValues);
     });
@@ -505,7 +505,7 @@ function setupEventListeners() {
             if (data.success) {
                 activeSet = setId;
                 await loadSettings();
-                latestHistory = { day: [], week: [], month: [], year: [] };
+                latestHistory = { hour: [], day: [], week: [], month: [], year: [] };
                 latestValues = sensorReadings;
                 renderSetSelector();
                 renderSensorGrid();
@@ -571,7 +571,7 @@ async function saveConfig() {
         const data = await response.json();
         if (data.success) {
             await loadSettings();
-            latestHistory = { day: [], week: [], month: [], year: [] };
+            latestHistory = { hour: [], day: [], week: [], month: [], year: [] };
             latestValues = sensorReadings;
             renderSetSelector();
             renderSensorGrid();

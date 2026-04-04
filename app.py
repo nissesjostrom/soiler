@@ -24,6 +24,7 @@ POLL_INTERVAL = 2.0  # seconds
 MODBUS_REGISTER_COUNT = 8
 
 HISTORY_RANGE_CONFIG = {
+    'hour': {'maxlen': 60},
     'day': {'maxlen': 288},
     'week': {'maxlen': 168},
     'month': {'maxlen': 31},
@@ -159,6 +160,8 @@ def get_sensor_value_by_default_index(values, default_index):
 
 def get_bucket_start(timestamp: datetime, range_name: str) -> datetime:
     """Return normalized bucket start time for a history range."""
+    if range_name == 'hour':
+        return timestamp.replace(second=0, microsecond=0)
     if range_name == 'day':
         minute = (timestamp.minute // 5) * 5
         return timestamp.replace(minute=minute, second=0, microsecond=0)
@@ -172,6 +175,8 @@ def get_bucket_start(timestamp: datetime, range_name: str) -> datetime:
 
 def format_bucket_label(timestamp: datetime, range_name: str) -> str:
     """Format a display label for a history bucket."""
+    if range_name == 'hour':
+        return timestamp.strftime('%H:%M')
     if range_name == 'day':
         return timestamp.strftime('%H:%M')
     if range_name == 'week':
