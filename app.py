@@ -80,6 +80,7 @@ CROPS = {
 # Global state
 SENSOR_SETS = {}
 ACTIVE_SET = 0
+UI_THEME = 'retro'
 current_values = None
 history_ranges = {name: deque(maxlen=config['maxlen']) for name, config in HISTORY_RANGE_CONFIG.items()}
 history_buckets = {name: None for name in HISTORY_RANGE_CONFIG}
@@ -108,7 +109,7 @@ def init_default_sets():
 
 def load_sensor_sets():
     """Load all 10 sensor sets from file."""
-    global SENSOR_SETS, ACTIVE_SET
+    global SENSOR_SETS, ACTIVE_SET, UI_THEME
     init_default_sets()
     
     if os.path.exists(CONFIG_FILE):
@@ -120,13 +121,18 @@ def load_sensor_sets():
                         if i < 10:
                             SENSOR_SETS[i] = set_data
                 ACTIVE_SET = config.get('active_set', 0)
+                UI_THEME = config.get('ui_theme', 'retro')
         except Exception as e:
             print(f"Error loading sets: {e}")
 
 def save_sensor_sets():
     """Save all 10 sensor sets to file."""
     try:
-        config = {'sets': [SENSOR_SETS[i] for i in range(10)], 'active_set': ACTIVE_SET}
+        config = {
+            'sets': [SENSOR_SETS[i] for i in range(10)],
+            'active_set': ACTIVE_SET,
+            'ui_theme': UI_THEME,
+        }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
     except Exception as e:
@@ -370,6 +376,7 @@ def get_settings():
     return jsonify({
         'sensor_sets': SENSOR_SETS,
         'active_set': ACTIVE_SET,
+        'ui_theme': UI_THEME,
         'readings': [{'name': name, 'unit': unit, 'min': min_w, 'max': max_w}
                      for _, name, unit, _, min_w, max_w in READINGS],
         'default_readings': [{'name': name, 'unit': unit} for name, unit, *_ in DEFAULT_READINGS]
@@ -445,6 +452,7 @@ def set_active_set(set_id):
 @app.route('/api/config', methods=['POST'])
 def update_config():
     """Update sensor configuration."""
+    global UI_THEME
     data = request.json
     
     if 'set_name' in data:
@@ -455,6 +463,9 @@ def update_config():
     
     if 'enabled' in data:
         SENSOR_SETS[ACTIVE_SET]['enabled'] = data['enabled']
+
+    if 'ui_theme' in data and data['ui_theme'] in ('retro', 'garden'):
+        UI_THEME = data['ui_theme']
     
     save_sensor_sets()
     names, enabled = get_active_set_data()

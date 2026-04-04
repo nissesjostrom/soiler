@@ -10,6 +10,7 @@ let latestHistory = { hour: [], day: [], week: [], month: [], year: [] };
 let latestValues = [];
 let graphRange = 'day';
 let selectedGraphSensors = [];
+let uiTheme = 'retro';
 
 const GRAPH_COLOR_PALETTE = [
     '#00FF00', '#FF00FF', '#00FFFF', '#FFFF00', '#FF8800',
@@ -67,6 +68,16 @@ function setSensorColor(sensorName, color) {
     localStorage.setItem(`soilSensorGraphColor_${sensorName}`, color);
 }
 
+function applyTheme(themeName) {
+    uiTheme = ['retro', 'garden'].includes(themeName) ? themeName : 'retro';
+    document.body.dataset.theme = uiTheme;
+
+    const selector = document.getElementById('themeSelect');
+    if (selector) {
+        selector.value = uiTheme;
+    }
+}
+
 // Load settings from server
 async function loadSettings() {
     try {
@@ -76,6 +87,7 @@ async function loadSettings() {
         activeSet = data.active_set;
         sensorReadings = data.readings;
         defaultReadings = data.default_readings;
+        applyTheme(data.ui_theme || 'retro');
         if (graphSensorIndex >= sensorReadings.length) {
             graphSensorIndex = 0;
         }
@@ -221,6 +233,7 @@ function renderSensorConfigForm() {
     
     const setName = sensorSets[activeSet]?.name || `Set ${activeSet + 1}`;
     document.getElementById('setNameInput').value = setName;
+    document.getElementById('themeSelect').value = uiTheme;
     
     defaultReadings.forEach((reading, index) => {
         const names = sensorSets[activeSet]?.names || [];
@@ -549,6 +562,7 @@ function closeSettings() {
 // Save configuration
 async function saveConfig() {
     const setName = document.getElementById('setNameInput').value.trim() || `Set ${activeSet + 1}`;
+    const selectedTheme = document.getElementById('themeSelect').value;
     
     const names = [];
     const enabled = [];
@@ -565,11 +579,12 @@ async function saveConfig() {
         const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ set_name: setName, names, enabled })
+            body: JSON.stringify({ set_name: setName, names, enabled, ui_theme: selectedTheme })
         });
         
         const data = await response.json();
         if (data.success) {
+            applyTheme(selectedTheme);
             await loadSettings();
             latestHistory = { hour: [], day: [], week: [], month: [], year: [] };
             latestValues = sensorReadings;

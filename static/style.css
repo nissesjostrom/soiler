@@ -13,14 +13,58 @@
     --magenta: #FF00FF;
     --yellow: #FFFF00;
     --dark-gray: #333333;
+    --page-bg: var(--deep-blue);
+    --panel-bg: var(--deep-blue);
+    --panel-alt-bg: #060640;
+    --input-bg: #1a1a4d;
+    --overlay-bg: rgba(0, 0, 0, 0.7);
+    --soft-line: rgba(0, 255, 255, 0.2);
+    --legend-border: rgba(255, 255, 0, 0.45);
+    --legend-item-border: rgba(0, 255, 255, 0.4);
+    --graph-grid: rgba(255, 255, 0, 0.18);
+    --stat-bg: rgba(0, 0, 0, 0.15);
+    --button-hover-magenta: #FF66FF;
+    --button-hover-cyan: #66FFFF;
+    --button-hover-yellow: #FFFF66;
+    --title-font: 'Courier New', monospace;
+    --body-font: 'Courier New', monospace;
+    --panel-radius: 0;
+    --shadow-soft: none;
+    --shadow-strong: none;
+}
+
+body[data-theme="garden"] {
+    --deep-blue: #f4eedf;
+    --cyan: #365c38;
+    --lime: #678d3c;
+    --magenta: #c2713d;
+    --yellow: #c9a24d;
+    --page-bg: linear-gradient(180deg, #edf6e8 0%, #e0ecd4 45%, #d4e5c6 100%);
+    --panel-bg: rgba(255, 250, 240, 0.92);
+    --panel-alt-bg: rgba(243, 236, 217, 0.95);
+    --input-bg: #f8f2e5;
+    --overlay-bg: rgba(51, 72, 41, 0.35);
+    --soft-line: rgba(54, 92, 56, 0.18);
+    --legend-border: rgba(201, 162, 77, 0.5);
+    --legend-item-border: rgba(54, 92, 56, 0.24);
+    --graph-grid: rgba(201, 162, 77, 0.2);
+    --stat-bg: rgba(103, 141, 60, 0.08);
+    --button-hover-magenta: #d98a57;
+    --button-hover-cyan: #4f8352;
+    --button-hover-yellow: #d8b768;
+    --title-font: 'Trebuchet MS', 'Verdana', sans-serif;
+    --body-font: 'Trebuchet MS', 'Verdana', sans-serif;
+    --panel-radius: 18px;
+    --shadow-soft: 0 10px 24px rgba(78, 104, 58, 0.12);
+    --shadow-strong: 0 14px 30px rgba(78, 104, 58, 0.18);
 }
 
 html, body {
     width: 100%;
     height: 100%;
-    background-color: var(--deep-blue);
+    background: var(--page-bg);
     color: var(--cyan);
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-size: 14px;
     overflow: hidden;
 }
@@ -30,7 +74,7 @@ html, body {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background-color: var(--deep-blue);
+    background: var(--page-bg);
 }
 
 /* Title Bar */
@@ -38,11 +82,13 @@ html, body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: var(--deep-blue);
+    background: var(--panel-bg);
     border: 2px solid var(--cyan);
     border-bottom: 2px solid var(--magenta);
+    border-radius: var(--panel-radius);
     padding: 10px 15px;
     gap: 15px;
+    box-shadow: var(--shadow-soft);
 }
 
 .title-left {
@@ -58,6 +104,8 @@ html, body {
     font-size: 16px;
     margin-bottom: 8px;
     color: var(--cyan);
+    font-family: var(--title-font);
+    letter-spacing: 0.08em;
 }
 
 .set-selector-wrapper {
@@ -73,17 +121,18 @@ html, body {
 }
 
 .set-selector-wrapper select {
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
     color: var(--cyan);
     border: 2px solid var(--cyan);
     padding: 5px 10px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-weight: bold;
     min-width: 180px;
+    border-radius: calc(var(--panel-radius) * 0.75);
 }
 
 .set-selector-wrapper select option {
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
     color: var(--cyan);
 }
 
@@ -93,6 +142,8 @@ html, body {
     border: 2px solid var(--cyan);
     color: var(--lime);
     font-weight: bold;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    background: var(--panel-alt-bg);
 }
 
 /* Buttons */
@@ -101,14 +152,16 @@ html, body {
     color: var(--deep-blue);
     border: 2px solid var(--magenta);
     padding: 8px 15px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-weight: bold;
     cursor: pointer;
     min-width: 100px;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    box-shadow: var(--shadow-soft);
 }
 
 .btn-settings:hover {
-    background-color: #FF66FF;
+    background-color: var(--button-hover-magenta);
 }
 
 .btn-save {
@@ -116,13 +169,15 @@ html, body {
     color: var(--deep-blue);
     border: 2px solid var(--magenta);
     padding: 8px 15px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-weight: bold;
     cursor: pointer;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    box-shadow: var(--shadow-soft);
 }
 
 .btn-save:hover {
-    background-color: #FF66FF;
+    background-color: var(--button-hover-magenta);
 }
 
 .btn-reset {
@@ -130,13 +185,15 @@ html, body {
     color: var(--deep-blue);
     border: 2px solid var(--cyan);
     padding: 8px 15px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-weight: bold;
     cursor: pointer;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    box-shadow: var(--shadow-soft);
 }
 
 .btn-reset:hover {
-    background-color: #66FFFF;
+    background-color: var(--button-hover-cyan);
 }
 
 .btn-close {
@@ -144,13 +201,15 @@ html, body {
     color: var(--deep-blue);
     border: 2px solid var(--yellow);
     padding: 8px 15px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-weight: bold;
     cursor: pointer;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    box-shadow: var(--shadow-soft);
 }
 
 .btn-close:hover {
-    background-color: #FFFF66;
+    background-color: var(--button-hover-yellow);
 }
 
 /* Main Content */
@@ -193,8 +252,9 @@ html, body {
 
 /* Sensor Card */
 .sensor-card {
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
     border: 3px solid var(--cyan);
+    border-radius: calc(var(--panel-radius) * 1.1);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -202,6 +262,7 @@ html, body {
     gap: 6px;
     min-height: 120px;
     justify-content: center;
+    box-shadow: var(--shadow-soft);
 }
 
 .sensor-card.warning {
@@ -251,14 +312,15 @@ html, body {
 }
 
 .tab-btn {
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
     color: var(--cyan);
     border: 2px solid var(--cyan);
     padding: 8px 20px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-weight: bold;
     cursor: pointer;
     flex: 1;
+    border-radius: calc(var(--panel-radius) * 0.75);
 }
 
 .tab-btn.active {
@@ -282,14 +344,15 @@ html, body {
 
 .crops-box, .history-box {
     border: 3px solid var(--magenta);
-    border-radius: 0;
+    border-radius: calc(var(--panel-radius) * 1.2);
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     flex: 1;
     overflow: hidden;
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
+    box-shadow: var(--shadow-soft);
 }
 
 .history-box {
@@ -352,12 +415,13 @@ html, body {
 }
 
 .graph-toolbar select {
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
     color: var(--yellow);
     border: 2px solid var(--yellow);
     padding: 5px 10px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     min-width: 220px;
+    border-radius: calc(var(--panel-radius) * 0.75);
 }
 
 .graph-legend {
@@ -365,7 +429,7 @@ html, body {
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
-    border: 2px solid rgba(255, 255, 0, 0.45);
+    border: 2px solid var(--legend-border);
     padding: 8px;
     min-height: 52px;
 }
@@ -374,11 +438,13 @@ html, body {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    border: 2px solid rgba(0, 255, 255, 0.4);
+    border: 2px solid var(--legend-item-border);
     padding: 4px 8px;
     color: var(--cyan);
     font-size: 11px;
     cursor: pointer;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    background: var(--panel-alt-bg);
 }
 
 .graph-legend-item input[type="checkbox"] {
@@ -411,10 +477,11 @@ html, body {
     align-items: center;
     justify-content: center;
     border: 2px solid var(--yellow);
-    background-color: #060640;
+    background-color: var(--panel-alt-bg);
     min-height: 280px;
     overflow: hidden;
     color: var(--lime);
+    border-radius: calc(var(--panel-radius) * 0.9);
 }
 
 .graph-content p {
@@ -427,11 +494,11 @@ html, body {
 }
 
 .graph-bg {
-    fill: #060640;
+    fill: var(--panel-alt-bg);
 }
 
 .graph-grid {
-    stroke: rgba(255, 255, 0, 0.18);
+    stroke: var(--graph-grid);
     stroke-width: 1;
 }
 
@@ -443,7 +510,7 @@ html, body {
 .graph-axis-label {
     fill: var(--cyan);
     font-size: 11px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
 }
 
 .graph-line {
@@ -462,7 +529,7 @@ html, body {
 .graph-point-label {
     fill: var(--lime);
     font-size: 10px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
 }
 
 .graph-stats {
@@ -472,14 +539,17 @@ html, body {
     flex-direction: column;
     gap: 6px;
     min-height: 44px;
+    border-radius: calc(var(--panel-radius) * 0.9);
+    background: var(--panel-alt-bg);
 }
 
 .graph-stat-item {
     display: block;
     border-left: 6px solid var(--yellow);
-    background-color: rgba(0, 0, 0, 0.15);
+    background-color: var(--stat-bg);
     padding: 6px 8px;
     font-weight: bold;
+    border-radius: calc(var(--panel-radius) * 0.6);
 }
 
 /* Modal */
@@ -490,7 +560,7 @@ html, body {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: var(--overlay-bg);
     justify-content: center;
     align-items: center;
     z-index: 1000;
@@ -501,7 +571,7 @@ html, body {
 }
 
 .modal-content {
-    background-color: var(--deep-blue);
+    background-color: var(--panel-bg);
     border: 3px solid var(--cyan);
     padding: 15px;
     width: 90%;
@@ -510,6 +580,8 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    border-radius: calc(var(--panel-radius) * 1.2);
+    box-shadow: var(--shadow-strong);
 }
 
 .modal-header {
@@ -568,11 +640,23 @@ html, body {
 
 .form-group input {
     flex: 1;
-    background-color: #1a1a4d;
+    background-color: var(--input-bg);
     color: var(--lime);
     border: 2px solid var(--magenta);
     padding: 5px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
+    border-radius: calc(var(--panel-radius) * 0.6);
+}
+
+.form-group select {
+    flex: 1;
+    background-color: var(--input-bg);
+    color: var(--cyan);
+    border: 2px solid var(--magenta);
+    padding: 5px;
+    font-family: var(--body-font);
+    font-weight: bold;
+    border-radius: calc(var(--panel-radius) * 0.6);
 }
 
 .sensor-config-row {
@@ -580,7 +664,7 @@ html, body {
     gap: 10px;
     align-items: center;
     padding: 5px 0;
-    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    border-bottom: 1px solid var(--soft-line);
 }
 
 .sensor-config-row input[type="checkbox"] {
@@ -598,12 +682,13 @@ html, body {
 
 .sensor-config-row input[type="text"] {
     flex: 1;
-    background-color: #1a1a4d;
+    background-color: var(--input-bg);
     color: var(--lime);
     border: 2px solid var(--cyan);
     padding: 4px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--body-font);
     font-size: 11px;
+    border-radius: calc(var(--panel-radius) * 0.55);
 }
 
 .sensor-config-row span {
@@ -667,5 +752,33 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #FF66FF;
+    background: var(--button-hover-magenta);
+}
+
+body[data-theme="garden"] .title-center h1::before {
+    content: '🌿 ';
+}
+
+body[data-theme="garden"] .title-center h1::after {
+    content: ' 🌱';
+}
+
+body[data-theme="garden"] .sensor-card-name,
+body[data-theme="garden"] .crops-box h2,
+body[data-theme="garden"] .history-box h2,
+body[data-theme="garden"] .modal-header h2 {
+    font-family: var(--title-font);
+}
+
+body[data-theme="garden"] .sensor-card {
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(233, 225, 203, 0.82));
+}
+
+body[data-theme="garden"] .graph-content,
+body[data-theme="garden"] .graph-stats,
+body[data-theme="garden"] .modal-content,
+body[data-theme="garden"] .crops-box,
+body[data-theme="garden"] .history-box,
+body[data-theme="garden"] .title-bar {
+    backdrop-filter: blur(3px);
 }
