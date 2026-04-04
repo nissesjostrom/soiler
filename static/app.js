@@ -5,16 +5,67 @@ let activeSet = 0;
 let sensorReadings = [];
 let defaultReadings = [];
 let pollInterval;
+let graphSensorIndex = 0;
+let latestHistory = [];
+let latestValues = [];
+let graphSampleLimit = 10;
+let selectedGraphSensors = [];
+
+const GRAPH_COLOR_PALETTE = [
+    '#00FF00', '#FF00FF', '#00FFFF', '#FFFF00', '#FF8800',
+    '#66FF66', '#FF6666', '#66CCFF', '#FF66FF', '#FFFFFF'
+];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+    loadGraphPreferences();
     await loadSettings();
     renderSetSelector();
     renderSensorGrid();
     renderSensorConfigForm();
+    renderGraphSelector();
+    renderGraphLegend();
     startPolling();
     setupEventListeners();
 });
+
+function getGraphSelectionStorageKey() {
+    return `soilSensorGraphSelections_set_${activeSet}`;
+}
+
+function loadGraphPreferences() {
+    const savedLimit = parseInt(localStorage.getItem('soilSensorGraphSampleLimit') || '10', 10);
+    graphSampleLimit = savedLimit === 5 ? 5 : 10;
+}
+
+function loadSelectedGraphSensors() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(getGraphSelectionStorageKey()) || '[]');
+        selectedGraphSensors = Array.isArray(saved) ? saved.filter(Number.isInteger) : [];
+    } catch {
+        selectedGraphSensors = [];
+    }
+}
+
+function saveSelectedGraphSensors() {
+    localStorage.setItem(getGraphSelectionStorageKey(), JSON.stringify(selectedGraphSensors));
+}
+
+function getSensorColor(sensorName, index) {
+    const key = `soilSensorGraphColor_${sensorName}`;
+    const savedColor = localStorage.getItem(key);
+    if (savedColor) {
+        return savedColor;
+    }
+
+    const fallback = GRAPH_COLOR_PALETTE[index % GRAPH_COLOR_PALETTE.length];
+    localStorage.setItem(key, fallback);
+    return fallback;
+}
+
+function setSensorColor(sensorName, color) {
+    localStorage.setItem(`soilSensorGraphColor_${sensorName}`, color);
+}
 
 // Load settings from server
 async function loadSettings() {
@@ -25,9 +76,106 @@ async function loadSettings() {
         activeSet = data.active_set;
         sensorReadings = data.readings;
         defaultReadings = data.default_readings;
+        if (graphSensorIndex >= sensorReadings.length) {
+            graphSensorIndex = 0;
+        }
+        loadSelectedGraphSensors();
+        const validIndexes = selectedGraphSensors.filter(index => index >= 0 && index < sensorReadings.length);
+        if (validIndexes.length === 0 && sensorReadings.length > 0) {
+            selectedGraphSensors = sensorReadings.slice(0, Math.min(3, sensorReadings.length)).map((_, index) => index);
+            saveSelectedGraphSensors();
+        } else {
+            selectedGraphSensors = validIndexes;
+        }
     } catch (error) {
         console.error('Error loading settings:', error);
     }
+}
+
+function renderGraphSelector() {
+    const selector = document.getElementById('graphSensorSelect');
+    if (!selector) return;
+
+    selector.innerHTML = '';
+
+    sensorReadings.forEach((reading, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${reading.name} ${reading.unit ? `(${reading.unit})` : ''}`.trim();
+        if (index === graphSensorIndex) option.selected = true;
+        selector.appendChild(option);
+    });
+
+    const rangeSelect = document.getElementById('graphRangeSelect');
+    if (rangeSelect) {
+        rangeSelect.value = String(graphSampleLimit);
+    }
+}
+
+function renderGraphLegend() {
+    const legend = document.getElementById('graphLegend');
+    if (!legend) return;
+
+    if (!sensorReadings.length) {
+        legend.innerHTML = '<p>⏳ No enabled sensors...</p>';
+        return;
+    }
+
+    legend.innerHTML = '';
+
+    sensorReadings.forEach((reading, index) => {
+        const item = document.createElement('label');
+        item.className = 'graph-legend-item';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedGraphSensors.includes(index);
+        checkbox.dataset.index = index;
+
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = getSensorColor(reading.name, index);
+        colorInput.dataset.name = reading.name;
+        colorInput.className = 'graph-color-picker';
+
+        const swatch = document.createElement('span');
+        swatch.className = 'graph-legend-swatch';
+        swatch.style.backgroundColor = colorInput.value;
+
+        const text = document.createElement('span');
+        text.className = 'graph-legend-text';
+        text.textContent = `${reading.name}${reading.unit ? ` (${reading.unit})` : ''}`;
+
+        checkbox.addEventListener('change', () => {
+            const numericIndex = parseInt(checkbox.dataset.index, 10);
+            if (checkbox.checked) {
+                if (!selectedGraphSensors.includes(numericIndex)) {
+                    selectedGraphSensors.push(numericIndex);
+                    selectedGraphSensors.sort((a, b) => a - b);
+                }
+            } else {
+                selectedGraphSensors = selectedGraphSensors.filter(itemIndex => itemIndex !== numericIndex);
+                if (graphSensorIndex === numericIndex && selectedGraphSensors.length > 0) {
+                    graphSensorIndex = selectedGraphSensors[0];
+                    renderGraphSelector();
+                }
+            }
+            saveSelectedGraphSensors();
+            renderGraph(latestHistory, latestValues);
+        });
+
+        colorInput.addEventListener('input', () => {
+            swatch.style.backgroundColor = colorInput.value;
+            setSensorColor(reading.name, colorInput.value);
+            renderGraph(latestHistory, latestValues);
+        });
+
+        item.appendChild(checkbox);
+        item.appendChild(colorInput);
+        item.appendChild(swatch);
+        item.appendChild(text);
+        legend.appendChild(item);
+    });
 }
 
 // Render set selector dropdown
@@ -150,12 +298,16 @@ async function updateSensorData() {
         } else {
             document.getElementById('cropsContent').innerHTML = '<p>⏳ Awaiting sensor data...</p>';
         }
-        
-        // Update history
-        if (data.history && data.history.length > 0) {
-            renderHistory(data.history, data.values);
+
+        latestHistory = data.history || [];
+        latestValues = data.values || [];
+
+        // Update graph
+        if (latestHistory.length > 0) {
+            renderGraph(latestHistory, latestValues);
         } else {
-            document.getElementById('historyContent').innerHTML = '<p>⏳ No readings yet...</p>';
+            document.getElementById('graphContent').innerHTML = '<p>⏳ No graph data yet...</p>';
+            document.getElementById('graphStats').textContent = 'Awaiting samples...';
         }
     } catch (error) {
         console.error('Error updating sensor data:', error);
@@ -179,53 +331,121 @@ function renderCrops(crops) {
     document.getElementById('cropsContent').textContent = html;
 }
 
-// Render history
-function renderHistory(history, values) {
-    let html = `READINGS: ${history.length}/10\n`;
-    html += '─'.repeat(65) + '\n\n';
-    
-    // Show each reading
-    history.forEach((entry, idx) => {
-        const timestamp = entry[entry.length - 1]; // Last element is timestamp
-        html += `${idx + 1}. [${timestamp}]\n`;
-        
-        values.forEach((reading, i) => {
-            if (i !== -1 && entry[i] !== undefined) {
-                const val = entry[i];
-                const formattedVal = typeof val === 'number'
-                    ? (val % 1 !== 0 ? val.toFixed(1) : val.toFixed(0))
-                    : '--';
-                html += `   ${reading.name.padEnd(12)} ${formattedVal} ${reading.unit}\n`;
-            }
-        });
-        html += '\n';
-    });
-    
-    // Calculate statistics
-    if (history.length > 0) {
-        html += '─'.repeat(65) + '\n';
-        html += 'STATISTICS (Min / Avg / Max):\n';
-        html += '─'.repeat(65) + '\n';
-        
-        values.forEach((reading, i) => {
-            const vals = history
-                .map(h => h[i])
-                .filter(v => typeof v === 'number' && !Number.isNaN(v));
-            if (vals.length > 0) {
-                const min = Math.min(...vals);
-                const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-                const max = Math.max(...vals);
-                
-                const minStr = min % 1 !== 0 ? min.toFixed(1) : min.toFixed(0);
-                const avgStr = avg % 1 !== 0 ? avg.toFixed(1) : avg.toFixed(0);
-                const maxStr = max % 1 !== 0 ? max.toFixed(1) : max.toFixed(0);
-                
-                html += `${reading.name.padEnd(14)} ${minStr} / ${avgStr} / ${maxStr} ${reading.unit}\n`;
-            }
-        });
+function formatGraphNumber(value) {
+    return value % 1 !== 0 ? value.toFixed(1) : value.toFixed(0);
+}
+
+function renderGraph(history, values) {
+    const graphContent = document.getElementById('graphContent');
+    const graphStats = document.getElementById('graphStats');
+
+    if (!values.length) {
+        graphContent.innerHTML = '<p>⏳ No enabled sensors...</p>';
+        graphStats.textContent = 'Awaiting samples...';
+        return;
     }
-    
-    document.getElementById('historyContent').textContent = html;
+
+    if (graphSensorIndex >= values.length) {
+        graphSensorIndex = 0;
+        renderGraphSelector();
+    }
+
+    const visibleIndexes = selectedGraphSensors.filter(index => index >= 0 && index < values.length);
+    const indexesToRender = visibleIndexes.length > 0 ? visibleIndexes : [graphSensorIndex];
+    const historyWindow = history.slice(-graphSampleLimit);
+    const series = indexesToRender.map(index => {
+        const reading = values[index];
+        const color = getSensorColor(reading.name, index);
+        const points = historyWindow.map((entry, sampleIndex) => ({
+            index: sampleIndex,
+            time: entry[entry.length - 1],
+            value: entry[index]
+        })).filter(point => typeof point.value === 'number' && !Number.isNaN(point.value));
+
+        return { index, reading, color, points };
+    }).filter(seriesItem => seriesItem.points.length > 0);
+
+    if (!series.length) {
+        graphContent.innerHTML = '<p>⏳ Selected sensors have no graphable samples yet...</p>';
+        graphStats.textContent = 'No numeric samples available for selected series';
+        return;
+    }
+
+    const width = 760;
+    const height = 320;
+    const left = 56;
+    const right = 18;
+    const top = 20;
+    const bottom = 48;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+
+    const allPoints = series.flatMap(seriesItem => seriesItem.points);
+    const rawMin = Math.min(...allPoints.map(point => point.value));
+    const rawMax = Math.max(...allPoints.map(point => point.value));
+    const padding = rawMin === rawMax ? Math.max(1, Math.abs(rawMin) * 0.1 || 1) : (rawMax - rawMin) * 0.12;
+    const minValue = rawMin - padding;
+    const maxValue = rawMax + padding;
+    const range = maxValue - minValue || 1;
+
+    const pointToSvg = (point) => {
+        const xDenominator = Math.max(historyWindow.length - 1, 1);
+        const x = left + (point.index / xDenominator) * plotWidth;
+        const y = top + ((maxValue - point.value) / range) * plotHeight;
+        return { x, y };
+    };
+
+    const yTicks = Array.from({ length: 5 }, (_, index) => {
+        const value = maxValue - (range / 4) * index;
+        const y = top + (plotHeight / 4) * index;
+        return { value, y };
+    });
+
+    const xLabels = historyWindow.map((entry, index) => {
+        const xDenominator = Math.max(historyWindow.length - 1, 1);
+        const x = left + (index / xDenominator) * plotWidth;
+        return { x, time: entry[entry.length - 1] };
+    });
+
+    graphContent.innerHTML = `
+        <svg class="graph-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="Multi-sensor graph">
+            <rect x="0" y="0" width="${width}" height="${height}" class="graph-bg"></rect>
+            ${yTicks.map(tick => `
+                <line x1="${left}" y1="${tick.y}" x2="${width - right}" y2="${tick.y}" class="graph-grid"></line>
+                <text x="${left - 8}" y="${tick.y + 4}" class="graph-axis-label" text-anchor="end">${formatGraphNumber(tick.value)}</text>
+            `).join('')}
+            <line x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}" class="graph-axis"></line>
+            <line x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" class="graph-axis"></line>
+            ${series.map(seriesItem => {
+                const svgPoints = seriesItem.points.map(pointToSvg);
+                const linePath = svgPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+                const lastPoint = svgPoints[svgPoints.length - 1];
+                const lastValue = seriesItem.points[seriesItem.points.length - 1].value;
+                return `
+                    <path d="${linePath}" class="graph-line" style="stroke: ${seriesItem.color}"></path>
+                    ${svgPoints.map(point => `
+                        <circle cx="${point.x}" cy="${point.y}" r="3.5" class="graph-point" style="fill: ${seriesItem.color}"></circle>
+                    `).join('')}
+                    <text x="${lastPoint.x + 8}" y="${lastPoint.y + 4}" class="graph-point-label" style="fill: ${seriesItem.color}">${seriesItem.reading.name} ${formatGraphNumber(lastValue)}</text>
+                `;
+            }).join('')}
+            ${xLabels.map((label, index) => {
+                if (historyWindow.length > 6 && index !== 0 && index !== historyWindow.length - 1 && index % 2 !== 0) {
+                    return '';
+                }
+                return `<text x="${label.x}" y="${height - bottom + 20}" class="graph-axis-label" text-anchor="middle">${label.time}</text>`;
+            }).join('')}
+        </svg>
+    `;
+
+    graphStats.innerHTML = series.map(seriesItem => {
+        const numericValues = seriesItem.points.map(point => point.value);
+        const average = numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length;
+        const latestValue = numericValues[numericValues.length - 1];
+        const min = Math.min(...numericValues);
+        const max = Math.max(...numericValues);
+        return `<span class="graph-stat-item" style="border-color: ${seriesItem.color}; color: ${seriesItem.color}">${seriesItem.reading.name}${seriesItem.reading.unit ? ` (${seriesItem.reading.unit})` : ''} | MIN ${formatGraphNumber(min)} | AVG ${formatGraphNumber(average)} | MAX ${formatGraphNumber(max)} | LAST ${formatGraphNumber(latestValue)}</span>`;
+    }).join('');
 }
 
 // Setup event listeners
@@ -238,6 +458,23 @@ function setupEventListeners() {
     // Save config button
     document.getElementById('saveSensorBtn').addEventListener('click', saveConfig);
     document.getElementById('resetSensorBtn').addEventListener('click', resetDefaults);
+
+    document.getElementById('graphSensorSelect').addEventListener('change', (e) => {
+        graphSensorIndex = parseInt(e.target.value, 10) || 0;
+        if (!selectedGraphSensors.includes(graphSensorIndex)) {
+            selectedGraphSensors.push(graphSensorIndex);
+            selectedGraphSensors.sort((a, b) => a - b);
+            saveSelectedGraphSensors();
+            renderGraphLegend();
+        }
+        renderGraph(latestHistory, latestValues);
+    });
+
+    document.getElementById('graphRangeSelect').addEventListener('change', (e) => {
+        graphSampleLimit = parseInt(e.target.value, 10) === 5 ? 5 : 10;
+        localStorage.setItem('soilSensorGraphSampleLimit', String(graphSampleLimit));
+        renderGraph(latestHistory, latestValues);
+    });
     
     // Set selector
     document.getElementById('setSelector').addEventListener('change', async (e) => {
@@ -248,9 +485,14 @@ function setupEventListeners() {
             if (data.success) {
                 activeSet = setId;
                 await loadSettings();
+                latestHistory = [];
+                latestValues = sensorReadings;
                 renderSetSelector();
                 renderSensorGrid();
                 renderSensorConfigForm();
+                renderGraphSelector();
+                renderGraphLegend();
+                renderGraph(latestHistory, sensorReadings);
             }
         } catch (error) {
             console.error('Error switching set:', error);
@@ -309,8 +551,13 @@ async function saveConfig() {
         const data = await response.json();
         if (data.success) {
             await loadSettings();
+            latestHistory = [];
+            latestValues = sensorReadings;
             renderSetSelector();
             renderSensorGrid();
+            renderGraphSelector();
+            renderGraphLegend();
+            renderGraph(latestHistory, sensorReadings);
             closeSettings();
         }
     } catch (error) {

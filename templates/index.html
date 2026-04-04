@@ -36,11 +36,11 @@
                 </div>
             </div>
 
-            <!-- Right: Tabs (Crops & History) -->
+            <!-- Right: Tabs (Crops & Graph) -->
             <div class="right-panel">
                 <div class="tabs">
                     <button class="tab-btn active" data-tab="crops">🌾 CROPS</button>
-                    <button class="tab-btn" data-tab="history">📊 HISTORY</button>
+                    <button class="tab-btn" data-tab="graph">📈 GRAPH</button>
                 </div>
 
                 <!-- Crops Tab -->
@@ -53,12 +53,27 @@
                     </div>
                 </div>
 
-                <!-- History Tab -->
-                <div id="history-tab" class="tab-content">
-                    <div class="history-box">
-                        <h2>📊 SENSOR HISTORY (Max 10) 📊</h2>
-                        <div id="historyContent" class="history-content">
-                            <p>⏳ No readings yet...</p>
+                <!-- Graph Tab -->
+                <div id="graph-tab" class="tab-content">
+                    <div class="history-box graph-box">
+                        <h2>📈 SENSOR TREND GRAPH (Max 10) 📈</h2>
+                        <div class="graph-toolbar">
+                            <label for="graphSensorSelect">SENSOR:</label>
+                            <select id="graphSensorSelect"></select>
+                            <label for="graphRangeSelect">RANGE:</label>
+                            <select id="graphRangeSelect">
+                                <option value="5">LAST 5</option>
+                                <option value="10" selected>LAST 10</option>
+                            </select>
+                        </div>
+                        <div id="graphLegend" class="graph-legend">
+                            <p>⏳ Loading sensor series...</p>
+                        </div>
+                        <div id="graphContent" class="graph-content">
+                            <p>⏳ No graph data yet...</p>
+                        </div>
+                        <div id="graphStats" class="graph-stats">
+                            Awaiting samples...
                         </div>
                     </div>
                 </div>
