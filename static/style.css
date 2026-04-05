@@ -115,6 +115,36 @@ html, body {
     gap: 10px;
 }
 
+.mode-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.mode-controls label {
+    color: var(--cyan);
+    font-weight: bold;
+}
+
+.mode-controls select {
+    background-color: var(--panel-bg);
+    color: var(--cyan);
+    border: 2px solid var(--cyan);
+    padding: 5px 10px;
+    font-family: var(--body-font);
+    font-weight: bold;
+    min-width: 170px;
+    border-radius: calc(var(--panel-radius) * 0.75);
+}
+
+.mode-controls select option {
+    background-color: var(--panel-bg);
+    color: var(--cyan);
+}
+
 .set-selector-wrapper label {
     color: var(--cyan);
     font-weight: bold;
@@ -210,6 +240,27 @@ html, body {
 
 .btn-close:hover {
     background-color: var(--button-hover-yellow);
+}
+
+.btn-analysis {
+    background-color: var(--cyan);
+    color: var(--deep-blue);
+    border: 2px solid var(--cyan);
+    padding: 8px 15px;
+    font-family: var(--body-font);
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: calc(var(--panel-radius) * 0.75);
+    box-shadow: var(--shadow-soft);
+}
+
+.btn-analysis:hover {
+    background-color: var(--button-hover-cyan);
+}
+
+.btn-analysis:disabled {
+    opacity: 0.7;
+    cursor: default;
 }
 
 /* Main Content */
@@ -611,7 +662,7 @@ html, body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
 }
 
 .modal-body::-webkit-scrollbar {
@@ -624,6 +675,84 @@ html, body {
 
 .modal-body::-webkit-scrollbar-thumb {
     background: var(--magenta);
+}
+
+.settings-section {
+    border: 2px solid var(--cyan);
+    background: var(--panel-alt-bg);
+    border-radius: calc(var(--panel-radius) * 1);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow-soft);
+}
+
+.settings-section-global {
+    border-color: var(--yellow);
+}
+
+.settings-section-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--soft-line);
+}
+
+.settings-section-header h3 {
+    color: var(--lime);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+}
+
+.settings-section-header p {
+    color: var(--cyan);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.settings-section-global .settings-section-header h3,
+.settings-section-global .form-group label {
+    color: var(--yellow);
+}
+
+.settings-section-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.settings-current-set {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 2px solid var(--magenta);
+    background: var(--panel-bg);
+    border-radius: calc(var(--panel-radius) * 0.7);
+}
+
+.settings-current-set-label {
+    color: var(--magenta);
+    font-weight: bold;
+}
+
+.settings-current-set-value {
+    color: var(--lime);
+    font-weight: bold;
+}
+
+.settings-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.settings-subsection h4 {
+    color: var(--cyan);
+    font-size: 12px;
 }
 
 .form-group {
@@ -782,6 +911,19 @@ body[data-device="mobile"] .set-selector-wrapper select {
     min-height: 46px;
 }
 
+body[data-device="mobile"] .mode-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+body[data-device="mobile"] .mode-controls select,
+body[data-device="mobile"] .btn-analysis {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+}
+
 body[data-device="mobile"] .title-right {
     padding: 10px 12px;
 }
@@ -893,6 +1035,15 @@ body[data-device="mobile"] .modal-content {
 body[data-device="mobile"] .form-group {
     flex-direction: column;
     align-items: stretch;
+}
+
+body[data-device="mobile"] .settings-section {
+    padding: 10px;
+}
+
+body[data-device="mobile"] .settings-current-set {
+    flex-direction: column;
+    align-items: flex-start;
 }
 
 body[data-device="mobile"] .form-group label {

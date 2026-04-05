@@ -27,7 +27,7 @@ BAUD = 9600
 SLAVE_ID = 1
 POLL_INTERVAL = 2000  # ms
 
-# Default sensor configuration (10 sensors total)
+# Default sensor configuration (8 sensors total)
 DEFAULT_READINGS = [
     # (name, unit, scale, min_warn, max_warn)
     ("Moisture", "%", 10, 10, 80),
@@ -38,8 +38,6 @@ DEFAULT_READINGS = [
     ("Phosphorus", "mg/kg", 1, 0, 200),
     ("Potassium", "mg/kg", 1, 0, 200),
     ("Salinity", "ppt", 10, 0, 2),
-    ("Conductivity", "mS/cm", 100, 0, 500),
-    ("Light Intensity", "lux", 1, 0, 100000),
 ]
 
 READINGS = DEFAULT_READINGS[:]  # Working copy, modified at runtime
@@ -83,15 +81,33 @@ def init_default_sets():
     global SENSOR_SETS
     SENSOR_SETS = {
         0: {"name": "Set 1: Standard", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
-        1: {"name": "Set 2: Soil Only", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True, False, True, True, True, True, True, False, False, False]},
-        2: {"name": "Set 3: Nutrients", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, False, False, False, True, True, True, False, False, False]},
-        3: {"name": "Set 4: Environment", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, True, False, False, False, False, False, False, True, True]},
+        1: {"name": "Set 2: Soil Only", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True, False, True, True, True, True, True, False]},
+        2: {"name": "Set 3: Nutrients", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, False, False, False, True, True, True, False]},
+        3: {"name": "Set 4: Environment", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, True, False, False, False, False, False, True]},
         4: {"name": "Set 5: Custom 1", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         5: {"name": "Set 6: Custom 2", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         6: {"name": "Set 7: Custom 3", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         7: {"name": "Set 8: Custom 4", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         8: {"name": "Set 9: Custom 5", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         9: {"name": "Set 10: Custom 6", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
+    }
+
+
+def normalize_sensor_set(set_data, fallback_name):
+    """Normalize persisted sensor-set data to match current defaults."""
+    names = list(set_data.get('names', []))[:len(DEFAULT_READINGS)]
+    enabled = list(set_data.get('enabled', []))[:len(DEFAULT_READINGS)]
+    default_names = [name for name, *_ in DEFAULT_READINGS]
+
+    if len(names) < len(DEFAULT_READINGS):
+        names.extend(default_names[len(names):])
+    if len(enabled) < len(DEFAULT_READINGS):
+        enabled.extend([True] * (len(DEFAULT_READINGS) - len(enabled)))
+
+    return {
+        'name': set_data.get('name', fallback_name),
+        'names': names,
+        'enabled': enabled,
     }
 
 def load_sensor_sets():
@@ -106,7 +122,7 @@ def load_sensor_sets():
                 if 'sets' in config:
                     for i, set_data in enumerate(config['sets'][:10]):
                         if i < 10:
-                            SENSOR_SETS[i] = set_data
+                            SENSOR_SETS[i] = normalize_sensor_set(set_data, SENSOR_SETS[i]['name'])
                 ACTIVE_SET = config.get('active_set', 0)
         except Exception as e:
             print(f"Error loading sets: {e}")
@@ -114,7 +130,10 @@ def load_sensor_sets():
 def save_sensor_sets():
     """Save all 10 sensor sets to file."""
     try:
-        config = {'sets': [SENSOR_SETS[i] for i in range(10)], 'active_set': ACTIVE_SET}
+        config = {
+            'sets': [normalize_sensor_set(SENSOR_SETS[i], f"Set {i + 1}") for i in range(10)],
+            'active_set': ACTIVE_SET,
+        }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
     except Exception as e:
@@ -331,6 +350,7 @@ class SensorSettingsDialog(QDialog):
             SENSOR_SETS[ACTIVE_SET]['names'] = names
             SENSOR_SETS[ACTIVE_SET]['enabled'] = enabled
             SENSOR_SETS[ACTIVE_SET]['name'] = set_name
+            SENSOR_SETS[ACTIVE_SET] = normalize_sensor_set(SENSOR_SETS[ACTIVE_SET], set_name)
         
         save_sensor_sets()
         update_readings(names, enabled)
@@ -349,6 +369,9 @@ class SensorSettingsDialog(QDialog):
         
         for check in self.sensor_checks:
             check.setChecked(True)
+
+        if ACTIVE_SET in SENSOR_SETS:
+            self.set_name_input.setText(SENSOR_SETS[ACTIVE_SET]['name'])
 
 
 class SensorWorker(QObject):

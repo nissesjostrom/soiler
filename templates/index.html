@@ -21,6 +21,14 @@
                         <!-- Populated by JavaScript -->
                     </select>
                 </div>
+                <div class="mode-controls">
+                    <label for="modeSelector">MODE:</label>
+                    <select id="modeSelector">
+                        <option value="continuous">CONTINUOUS</option>
+                        <option value="analysis">ANALYSIS</option>
+                    </select>
+                    <button id="runAnalysisBtn" class="btn-analysis">▶ RUN ANALYSIS</button>
+                </div>
             </div>
             <div class="title-right">
                 <span id="statusBar">► INITIALIZING...</span>
@@ -93,25 +101,56 @@
             </div>
             
             <div class="modal-body">
-                <!-- Set Name -->
-                <div class="form-group">
-                    <label for="setNameInput">SET NAME:</label>
-                    <input type="text" id="setNameInput" placeholder="Enter set name">
-                </div>
+                <section class="settings-section settings-section-set">
+                    <div class="settings-section-header">
+                        <h3>PER-SET SETTINGS</h3>
+                        <p>These settings only affect the currently selected sensor set.</p>
+                    </div>
 
-                <!-- UI Theme -->
-                <div class="form-group">
-                    <label for="themeSelect">UI THEME:</label>
-                    <select id="themeSelect">
-                        <option value="retro">RETRO TERMINAL</option>
-                        <option value="garden">GARDEN NOTEBOOK</option>
-                    </select>
-                </div>
+                    <div class="settings-section-body">
+                        <div class="settings-current-set">
+                            <span class="settings-current-set-label">EDITING:</span>
+                            <span id="settingsActiveSetLabel" class="settings-current-set-value">SET 1</span>
+                        </div>
 
-                <!-- Sensor Configuration -->
-                <div id="sensorConfigForm">
-                    <!-- Populated by JavaScript -->
-                </div>
+                        <div class="form-group">
+                            <label for="setNameInput">SET NAME:</label>
+                            <input type="text" id="setNameInput" placeholder="Enter set name">
+                        </div>
+
+                        <div class="settings-subsection">
+                            <h4>SENSOR CONFIGURATION</h4>
+                            <div id="sensorConfigForm">
+                                <!-- Populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-section settings-section-global">
+                    <div class="settings-section-header">
+                        <h3>GLOBAL SETTINGS</h3>
+                        <p>These settings apply across the whole dashboard.</p>
+                    </div>
+
+                    <div class="settings-section-body">
+                        <div class="form-group">
+                            <label for="themeSelect">UI THEME:</label>
+                            <select id="themeSelect">
+                                <option value="retro">RETRO TERMINAL</option>
+                                <option value="garden">GARDEN NOTEBOOK</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="modalModeSelect">DEFAULT MODE:</label>
+                            <select id="modalModeSelect">
+                                <option value="continuous">CONTINUOUS</option>
+                                <option value="analysis">ANALYSIS</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
             </div>
 
             <div class="modal-footer">

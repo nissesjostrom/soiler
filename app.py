@@ -37,7 +37,7 @@ MOBILE_USER_AGENT_HINTS = (
     'windows phone', 'opera mini', 'opera mobi', 'webos'
 )
 
-# Default sensor configuration (10 sensors total)
+# Default sensor configuration (8 sensors total)
 DEFAULT_READINGS = [
     # (name, unit, scale, min_warn, max_warn)
     ("Moisture", "%", 10, 10, 80),
@@ -48,8 +48,6 @@ DEFAULT_READINGS = [
     ("Phosphorus", "mg/kg", 1, 0, 200),
     ("Potassium", "mg/kg", 1, 0, 200),
     ("Salinity", "ppt", 10, 0, 2),
-    ("Conductivity", "mS/cm", 100, 0, 500),
-    ("Light Intensity", "lux", 1, 0, 100000),
 ]
 
 READINGS = DEFAULT_READINGS[:]
@@ -86,6 +84,7 @@ CROPS = {
 SENSOR_SETS = {}
 ACTIVE_SET = 0
 UI_THEME = 'retro'
+OPERATION_MODE = 'continuous'
 current_values = None
 history_ranges = {name: deque(maxlen=config['maxlen']) for name, config in HISTORY_RANGE_CONFIG.items()}
 history_buckets = {name: None for name in HISTORY_RANGE_CONFIG}
@@ -94,6 +93,7 @@ last_update = None
 port = None
 serial_thread = None
 stop_event = threading.Event()
+port_lock = threading.Lock()
 
 # Configuration functions
 def init_default_sets():
@@ -101,9 +101,9 @@ def init_default_sets():
     global SENSOR_SETS
     SENSOR_SETS = {
         0: {"name": "Set 1: Standard", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
-        1: {"name": "Set 2: Soil Only", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True, False, True, True, True, True, True, False, False, False]},
-        2: {"name": "Set 3: Nutrients", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, False, False, False, True, True, True, False, False, False]},
-        3: {"name": "Set 4: Environment", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, True, False, False, False, False, False, False, True, True]},
+        1: {"name": "Set 2: Soil Only", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True, False, True, True, True, True, True, False]},
+        2: {"name": "Set 3: Nutrients", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, False, False, False, True, True, True, False]},
+        3: {"name": "Set 4: Environment", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [False, True, False, False, False, False, False, True]},
         4: {"name": "Set 5: Custom 1", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         5: {"name": "Set 6: Custom 2", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
         6: {"name": "Set 7: Custom 3", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
@@ -112,9 +112,27 @@ def init_default_sets():
         9: {"name": "Set 10: Custom 6", "names": [name for name, *_ in DEFAULT_READINGS], "enabled": [True] * len(DEFAULT_READINGS)},
     }
 
+
+def normalize_sensor_set(set_data, fallback_name):
+    """Normalize persisted sensor-set data to match current defaults."""
+    names = list(set_data.get('names', []))[:len(DEFAULT_READINGS)]
+    enabled = list(set_data.get('enabled', []))[:len(DEFAULT_READINGS)]
+    default_names = [name for name, *_ in DEFAULT_READINGS]
+
+    if len(names) < len(DEFAULT_READINGS):
+        names.extend(default_names[len(names):])
+    if len(enabled) < len(DEFAULT_READINGS):
+        enabled.extend([True] * (len(DEFAULT_READINGS) - len(enabled)))
+
+    return {
+        'name': set_data.get('name', fallback_name),
+        'names': names,
+        'enabled': enabled,
+    }
+
 def load_sensor_sets():
     """Load all 10 sensor sets from file."""
-    global SENSOR_SETS, ACTIVE_SET, UI_THEME
+    global SENSOR_SETS, ACTIVE_SET, UI_THEME, OPERATION_MODE
     init_default_sets()
     
     if os.path.exists(CONFIG_FILE):
@@ -124,9 +142,12 @@ def load_sensor_sets():
                 if 'sets' in config:
                     for i, set_data in enumerate(config['sets'][:10]):
                         if i < 10:
-                            SENSOR_SETS[i] = set_data
+                            SENSOR_SETS[i] = normalize_sensor_set(set_data, SENSOR_SETS[i]['name'])
                 ACTIVE_SET = config.get('active_set', 0)
                 UI_THEME = config.get('ui_theme', 'retro')
+                OPERATION_MODE = config.get('operation_mode', 'continuous')
+                if OPERATION_MODE not in ('analysis', 'continuous'):
+                    OPERATION_MODE = 'continuous'
         except Exception as e:
             print(f"Error loading sets: {e}")
 
@@ -134,14 +155,27 @@ def save_sensor_sets():
     """Save all 10 sensor sets to file."""
     try:
         config = {
-            'sets': [SENSOR_SETS[i] for i in range(10)],
+            'sets': [normalize_sensor_set(SENSOR_SETS[i], f"Set {i + 1}") for i in range(10)],
             'active_set': ACTIVE_SET,
             'ui_theme': UI_THEME,
+            'operation_mode': OPERATION_MODE,
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
     except Exception as e:
         print(f"Error saving sets: {e}")
+
+
+def set_operation_mode(mode: str):
+    """Update the active operating mode."""
+    global OPERATION_MODE, sensor_status
+
+    OPERATION_MODE = mode if mode in ('analysis', 'continuous') else 'continuous'
+    if port is not None and port.is_open:
+        if OPERATION_MODE == 'analysis':
+            sensor_status = '◼ Analysis mode — waiting for manual run'
+        else:
+            sensor_status = '● Continuous mode'
 
 def get_active_set_data():
     """Get names and enabled list for active set."""
@@ -315,36 +349,55 @@ def read_registers():
     if port is None or not port.is_open:
         return None
     try:
-        req = bytes([SLAVE_ID, 0x03, 0x00, 0x00, 0x00, 0x08])
-        c = crc16(req)
-        req += bytes([c & 0xFF, c >> 8])
+        with port_lock:
+            req = bytes([SLAVE_ID, 0x03, 0x00, 0x00, 0x00, 0x08])
+            c = crc16(req)
+            req += bytes([c & 0xFF, c >> 8])
 
-        port.reset_input_buffer()
-        port.write(req)
-        port.flush()
+            port.reset_input_buffer()
+            port.write(req)
+            port.flush()
 
-        resp = port.read(21)
-        if len(resp) != 21:
-            return None
-        if resp[0] != SLAVE_ID or resp[1] != 0x03 or resp[2] != 16:
-            return None
-        resp_crc = (resp[20] << 8) | resp[19]
-        if crc16(resp[:19]) != resp_crc:
-            return None
+            resp = port.read(21)
+            if len(resp) != 21:
+                return None
+            if resp[0] != SLAVE_ID or resp[1] != 0x03 or resp[2] != 16:
+                return None
+            resp_crc = (resp[20] << 8) | resp[19]
+            if crc16(resp[:19]) != resp_crc:
+                return None
 
-        values = []
-        for source_index, _, _, scale, _, _ in READINGS:
-            if source_index >= MODBUS_REGISTER_COUNT:
-                values.append(None)
-                continue
+            values = []
+            for source_index, _, _, scale, _, _ in READINGS:
+                if source_index >= MODBUS_REGISTER_COUNT:
+                    values.append(None)
+                    continue
 
-            raw_offset = 3 + source_index * 2
-            raw = (resp[raw_offset] << 8) | resp[raw_offset + 1]
-            values.append(raw / scale if scale > 1 else float(raw))
-        return values
+                raw_offset = 3 + source_index * 2
+                raw = (resp[raw_offset] << 8) | resp[raw_offset + 1]
+                values.append(raw / scale if scale > 1 else float(raw))
+            return values
     except Exception as e:
         print(f"Read error: {e}")
         return None
+
+
+def perform_sensor_read(update_history: bool = True):
+    """Run one sensor read and update shared state."""
+    global current_values, sensor_status, last_update
+
+    values = read_registers()
+    if values is None:
+        current_values = None
+        sensor_status = '✗ No response'
+        return False
+
+    current_values = values
+    last_update = datetime.now().isoformat()
+    if update_history:
+        add_history_sample(values, datetime.now())
+    sensor_status = '● Continuous mode' if OPERATION_MODE == 'continuous' else '✔ Analysis captured'
+    return True
 
 def sensor_worker():
     """Background worker thread for sensor polling."""
@@ -352,7 +405,7 @@ def sensor_worker():
     
     try:
         port = serial.Serial(PORT, BAUD, timeout=1.5)
-        sensor_status = "● Connected"
+        sensor_status = '● Continuous mode' if OPERATION_MODE == 'continuous' else '◼ Analysis mode — waiting for manual run'
     except serial.SerialException as e:
         sensor_status = f"✗ Error: {e}"
         return
@@ -361,16 +414,8 @@ def sensor_worker():
     
     while not stop_event.is_set():
         now = time.time()
-        if now - last_read >= POLL_INTERVAL:
-            values = read_registers()
-            if values is not None:
-                current_values = values
-                last_update = datetime.now().isoformat()
-                add_history_sample(values, datetime.now())
-                sensor_status = "● Connected"
-            else:
-                current_values = None
-                sensor_status = "✗ No response"
+        if OPERATION_MODE == 'continuous' and now - last_read >= POLL_INTERVAL:
+            perform_sensor_read(update_history=True)
             last_read = now
         time.sleep(0.1)
 
@@ -393,6 +438,7 @@ def get_settings():
         'sensor_sets': SENSOR_SETS,
         'active_set': ACTIVE_SET,
         'ui_theme': UI_THEME,
+        'operation_mode': OPERATION_MODE,
         'readings': [{'name': name, 'unit': unit, 'min': min_w, 'max': max_w}
                      for _, name, unit, _, min_w, max_w in READINGS],
         'default_readings': [{'name': name, 'unit': unit} for name, unit, *_ in DEFAULT_READINGS]
@@ -445,6 +491,7 @@ def get_data():
 
     return jsonify({
         'status': sensor_status,
+        'operation_mode': OPERATION_MODE,
         'last_update': last_update,
         'values': sensor_values,
         'crops': crops,
@@ -470,18 +517,26 @@ def update_config():
     """Update sensor configuration."""
     global UI_THEME
     data = request.json
+    current_set = normalize_sensor_set(
+        SENSOR_SETS.get(ACTIVE_SET, {}),
+        f"Set {ACTIVE_SET + 1}"
+    )
     
     if 'set_name' in data:
-        SENSOR_SETS[ACTIVE_SET]['name'] = data['set_name']
+        current_set['name'] = data['set_name']
     
     if 'names' in data:
-        SENSOR_SETS[ACTIVE_SET]['names'] = data['names']
+        current_set['names'] = data['names']
     
     if 'enabled' in data:
-        SENSOR_SETS[ACTIVE_SET]['enabled'] = data['enabled']
+        current_set['enabled'] = data['enabled']
+
+    SENSOR_SETS[ACTIVE_SET] = normalize_sensor_set(current_set, current_set['name'])
 
     if 'ui_theme' in data and data['ui_theme'] in ('retro', 'garden'):
         UI_THEME = data['ui_theme']
+    if 'operation_mode' in data:
+        set_operation_mode(data['operation_mode'])
     
     save_sensor_sets()
     names, enabled = get_active_set_data()
@@ -489,6 +544,29 @@ def update_config():
     clear_history_ranges()
     
     return jsonify({'success': True})
+
+
+@app.route('/api/mode', methods=['POST'])
+def update_mode():
+    """Switch between analysis and continuous modes."""
+    data = request.json or {}
+    mode = data.get('operation_mode', 'continuous')
+    if mode not in ('analysis', 'continuous'):
+        return jsonify({'success': False, 'error': 'invalid mode'}), 400
+
+    set_operation_mode(mode)
+    save_sensor_sets()
+    return jsonify({'success': True, 'operation_mode': OPERATION_MODE})
+
+
+@app.route('/api/analyze', methods=['POST'])
+def run_analysis():
+    """Run a single manual sensor capture in analysis mode."""
+    if OPERATION_MODE != 'analysis':
+        return jsonify({'success': False, 'error': 'analysis mode is not active'}), 400
+
+    success = perform_sensor_read(update_history=True)
+    return jsonify({'success': success, 'status': sensor_status, 'last_update': last_update})
 
 if __name__ == '__main__':
     # Load configuration

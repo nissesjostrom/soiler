@@ -1,10 +1,10 @@
 # Soil Sensor v2.0 — Web Edition
 
-A lightweight web-based agricultural soil monitoring system for **Raspberry Pi Zero**, featuring real-time sensor data, crop recommendations, and 10-sample history tracking.
+A lightweight web-based agricultural soil monitoring system for **Raspberry Pi Zero**, featuring real-time sensor data, crop recommendations, and graph-based history tracking.
 
 ## 🌾 Features
 
-- **Real-time Monitoring**: 2-second polling interval for 10 sensor types
+- **Real-time Monitoring**: 2-second polling interval for 8 sensor types
 - **Crop Recommendations**: AI-powered scoring for 24 European crops
 - **History Tracking**: Store and visualize last 10 readings with statistics
 - **Multi-Set Configuration**: 10 customizable sensor configurations
@@ -104,7 +104,7 @@ hostname -I
 1. **Standard** - All sensors enabled
 2. **Soil Only** - Moisture, EC, pH, Nutrients
 3. **Nutrients** - N, P, K focus
-4. **Environment** - Temperature, EC, Light
+4. **Environment** - Temperature and salinity
 5-10. **Custom 1-6** - User-configurable
 
 Switch sets via dropdown in web UI.
@@ -137,9 +137,6 @@ Configuration saved to `~/.8sense_config.json`:
 | 6 | Phosphorus | mg/kg | 0-200 |
 | 7 | Potassium | mg/kg | 0-200 |
 | 8 | Salinity | ppt | 0-2 |
-| 9 | Conductivity | mS/cm | 0-500 |
-| 10 | Light Intensity | lux | 0-100k |
-
 ## 🌱 Crop Database
 
 24 crops with soil requirements:

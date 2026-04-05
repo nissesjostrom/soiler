@@ -11,6 +11,7 @@ let latestValues = [];
 let graphRange = 'day';
 let selectedGraphSensors = [];
 let uiTheme = 'retro';
+let operationMode = 'continuous';
 
 const GRAPH_COLOR_PALETTE = [
     '#00FF00', '#FF00FF', '#00FFFF', '#FFFF00', '#FF8800',
@@ -88,6 +89,7 @@ async function loadSettings() {
         sensorReadings = data.readings;
         defaultReadings = data.default_readings;
         applyTheme(data.ui_theme || 'retro');
+        operationMode = ['analysis', 'continuous'].includes(data.operation_mode) ? data.operation_mode : 'continuous';
         if (graphSensorIndex >= sensorReadings.length) {
             graphSensorIndex = 0;
         }
@@ -99,8 +101,29 @@ async function loadSettings() {
         } else {
             selectedGraphSensors = validIndexes;
         }
+        updateModeControls();
     } catch (error) {
         console.error('Error loading settings:', error);
+    }
+}
+
+function updateModeControls() {
+    const selector = document.getElementById('modeSelector');
+    const button = document.getElementById('runAnalysisBtn');
+    const modalSelector = document.getElementById('modalModeSelect');
+
+    if (selector) {
+        selector.value = operationMode;
+    }
+
+    if (modalSelector) {
+        modalSelector.value = operationMode;
+    }
+
+    if (button) {
+        const analysisActive = operationMode === 'analysis';
+        button.disabled = !analysisActive;
+        button.textContent = analysisActive ? '▶ RUN ANALYSIS' : '● AUTO RUNNING';
     }
 }
 
@@ -232,8 +255,15 @@ function renderSensorConfigForm() {
     form.innerHTML = '';
     
     const setName = sensorSets[activeSet]?.name || `Set ${activeSet + 1}`;
+    const setLabel = document.getElementById('settingsActiveSetLabel');
+
+    if (setLabel) {
+        setLabel.textContent = `SET ${activeSet + 1} — ${setName.toUpperCase()}`;
+    }
+
     document.getElementById('setNameInput').value = setName;
     document.getElementById('themeSelect').value = uiTheme;
+    document.getElementById('modalModeSelect').value = operationMode;
     
     defaultReadings.forEach((reading, index) => {
         const names = sensorSets[activeSet]?.names || [];
@@ -270,10 +300,17 @@ function renderSensorConfigForm() {
 
 // Start polling sensor data
 function startPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+
     // Poll immediately
     updateSensorData();
-    // Then every 2 seconds
-    pollInterval = setInterval(updateSensorData, 2000);
+
+    if (operationMode === 'continuous') {
+        pollInterval = setInterval(updateSensorData, 2000);
+    }
 }
 
 // Update sensor data from API
@@ -281,6 +318,8 @@ async function updateSensorData() {
     try {
         const response = await fetch('/api/data');
         const data = await response.json();
+        operationMode = ['analysis', 'continuous'].includes(data.operation_mode) ? data.operation_mode : operationMode;
+        updateModeControls();
         
         // Update status bar
         document.getElementById('statusBar').textContent = data.status;
@@ -508,6 +547,14 @@ function setupEventListeners() {
         localStorage.setItem('soilSensorGraphRange', graphRange);
         renderGraph(latestHistory, latestValues);
     });
+
+    document.getElementById('modeSelector').addEventListener('change', async (e) => {
+        await switchOperationMode(e.target.value);
+    });
+
+    document.getElementById('runAnalysisBtn').addEventListener('click', async () => {
+        await runManualAnalysis();
+    });
     
     // Set selector
     document.getElementById('setSelector').addEventListener('change', async (e) => {
@@ -548,6 +595,56 @@ function setupEventListeners() {
     });
 }
 
+async function switchOperationMode(mode) {
+    const nextMode = ['analysis', 'continuous'].includes(mode) ? mode : 'continuous';
+
+    try {
+        const response = await fetch('/api/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operation_mode: nextMode })
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'mode switch failed');
+        }
+
+        operationMode = data.operation_mode;
+        updateModeControls();
+        startPolling();
+        await updateSensorData();
+    } catch (error) {
+        console.error('Error switching mode:', error);
+        alert('Error switching mode');
+        updateModeControls();
+    }
+}
+
+async function runManualAnalysis() {
+    if (operationMode !== 'analysis') {
+        return;
+    }
+
+    const button = document.getElementById('runAnalysisBtn');
+    button.disabled = true;
+    button.textContent = '⏳ RUNNING...';
+
+    try {
+        const response = await fetch('/api/analyze', { method: 'POST' });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'analysis failed');
+        }
+        await updateSensorData();
+    } catch (error) {
+        console.error('Error running analysis:', error);
+        alert('Error running analysis');
+    } finally {
+        updateModeControls();
+    }
+}
+
 // Open settings modal
 function openSettings() {
     document.getElementById('settingsModal').classList.remove('hidden');
@@ -563,6 +660,7 @@ function closeSettings() {
 async function saveConfig() {
     const setName = document.getElementById('setNameInput').value.trim() || `Set ${activeSet + 1}`;
     const selectedTheme = document.getElementById('themeSelect').value;
+    const selectedMode = document.getElementById('modalModeSelect').value;
     
     const names = [];
     const enabled = [];
@@ -579,12 +677,20 @@ async function saveConfig() {
         const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ set_name: setName, names, enabled, ui_theme: selectedTheme })
+            body: JSON.stringify({
+                set_name: setName,
+                names,
+                enabled,
+                ui_theme: selectedTheme,
+                operation_mode: selectedMode
+            })
         });
         
         const data = await response.json();
         if (data.success) {
             applyTheme(selectedTheme);
+            operationMode = ['analysis', 'continuous'].includes(selectedMode) ? selectedMode : operationMode;
+            updateModeControls();
             await loadSettings();
             latestHistory = { hour: [], day: [], week: [], month: [], year: [] };
             latestValues = sensorReadings;
@@ -593,6 +699,7 @@ async function saveConfig() {
             renderGraphSelector();
             renderGraphLegend();
             renderGraph(latestHistory, sensorReadings);
+            startPolling();
             closeSettings();
         }
     } catch (error) {
