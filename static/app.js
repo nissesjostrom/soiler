@@ -13,6 +13,8 @@ let selectedGraphSensors = [];
 let uiTheme = 'retro';
 let operationMode = 'continuous';
 let sensorPollInterval = 10;
+let analysisMemory = [];
+let timelineEntries = [];
 
 const GRAPH_COLOR_PALETTE = [
     '#00FF00', '#FF00FF', '#00FFFF', '#FFFF00', '#FF8800',
@@ -360,8 +362,11 @@ async function updateSensorData() {
         });
         
         // Update crop recommendations
-        if ((data.crops && data.crops.length > 0) || data.npk_analysis) {
-            renderCrops(data.crops || [], data.npk_analysis || null);
+        analysisMemory = Array.isArray(data.analysis_memory) ? data.analysis_memory : [];
+        timelineEntries = Array.isArray(data.timeline_entries) ? data.timeline_entries : [];
+
+        if ((data.crops && data.crops.length > 0) || data.npk_analysis || timelineEntries.length > 0 || analysisMemory.length > 0 || operationMode === 'analysis') {
+            renderCrops(data.crops || [], data.npk_analysis || null, analysisMemory, operationMode, timelineEntries);
         } else {
             document.getElementById('cropsContent').innerHTML = '<p>⏳ Awaiting sensor data...</p>';
         }
@@ -384,7 +389,129 @@ async function updateSensorData() {
 }
 
 // Render crop recommendations
-function renderCrops(crops, npkAnalysis) {
+function formatAnalysisTimestamp(timestamp) {
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) {
+        return timestamp || 'Unknown time';
+    }
+
+    return parsed.toLocaleString();
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderAnalysisMemory(entries, mode) {
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    if (!safeEntries.length) {
+        const emptyLabel = mode === 'analysis'
+            ? 'No saved analysis runs yet. Press RUN ANALYSIS to store the next capture.'
+            : 'No saved analysis runs for this set yet.';
+
+        return `
+            <section class="crops-section analysis-memory-section">
+                <h3>🧠 ANALYSIS MEMORY</h3>
+                <p class="crops-placeholder">${emptyLabel}</p>
+            </section>
+        `;
+    }
+
+    return `
+        <section class="crops-section analysis-memory-section">
+            <h3>🧠 ANALYSIS MEMORY</h3>
+            <div class="analysis-memory-list">
+                ${safeEntries.map(entry => {
+                    const topCrop = Array.isArray(entry.crops) && entry.crops.length > 0 ? entry.crops[0] : null;
+                    const ratio = entry.npk_analysis && Array.isArray(entry.npk_analysis.ratio_to_peak)
+                        ? entry.npk_analysis.ratio_to_peak.map(value => Number(value).toFixed(2)).join(' : ')
+                        : 'No NPK ratio saved';
+                    const readingChips = Array.isArray(entry.values)
+                        ? entry.values.map(reading => {
+                            const formattedValue = typeof reading.value === 'number'
+                                ? `${formatGraphNumber(reading.value)}${reading.unit ? ` ${reading.unit}` : ''}`
+                                : '--';
+                            return `<span class="analysis-chip">${reading.name}: ${formattedValue}</span>`;
+                        }).join('')
+                        : '';
+
+                    return `
+                        <article class="analysis-memory-item">
+                            <div class="analysis-memory-head">
+                                <div class="analysis-memory-time">${formatAnalysisTimestamp(entry.created_at)}</div>
+                                <div class="analysis-memory-set">${entry.set_name}</div>
+                            </div>
+                            <div class="analysis-memory-summary">
+                                <span>Stored NPK ratio ${ratio}</span>
+                                <span>${topCrop ? `Best crop ${topCrop.icon} ${topCrop.name} (${topCrop.score.toFixed(0)}%)` : 'No crop ranking saved'}</span>
+                            </div>
+                            <div class="analysis-chip-list">${readingChips}</div>
+                        </article>
+                    `;
+                }).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function renderTimelineEntries(entries, mode) {
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    if (!safeEntries.length) {
+        return `
+            <section class="crops-section timeline-section">
+                <h3>📔 PLANT DIARY & READING TIMELINE</h3>
+                <p class="crops-placeholder">${mode === 'analysis' ? 'Run an analysis or add a diary note to begin the timeline.' : 'Awaiting saved readings or diary notes...'}</p>
+            </section>
+        `;
+    }
+
+    return `
+        <section class="crops-section timeline-section">
+            <h3>📔 PLANT DIARY & READING TIMELINE</h3>
+            <div class="timeline-list">
+                ${safeEntries.map(entry => {
+                    const topCrop = Array.isArray(entry.crops) && entry.crops.length > 0 ? entry.crops[0] : null;
+                    const ratio = entry.npk_analysis && Array.isArray(entry.npk_analysis.ratio_to_peak)
+                        ? entry.npk_analysis.ratio_to_peak.map(value => Number(value).toFixed(2)).join(' : ')
+                        : null;
+                    const readings = Array.isArray(entry.values) ? entry.values.slice(0, 6) : [];
+                    const readingChips = readings.map(reading => {
+                        const formattedValue = typeof reading.value === 'number'
+                            ? `${formatGraphNumber(reading.value)}${reading.unit ? ` ${reading.unit}` : ''}`
+                            : '--';
+                        return `<span class="analysis-chip">${reading.name}: ${formattedValue}</span>`;
+                    }).join('');
+                    const entryLabel = entry.entry_type === 'note' ? 'NOTE' : (entry.mode === 'analysis' ? 'ANALYSIS READING' : 'CONTINUOUS READING');
+                    const entryIcon = entry.entry_type === 'note' ? '📝' : (entry.mode === 'analysis' ? '🔬' : '📡');
+                    return `
+                        <article class="timeline-item timeline-item-${entry.entry_type}">
+                            <div class="timeline-item-head">
+                                <div class="timeline-item-title">${entryIcon} ${entryLabel}</div>
+                                <div class="timeline-item-time">${formatAnalysisTimestamp(entry.created_at)}</div>
+                            </div>
+                            <div class="timeline-item-meta">${entry.set_name} · ${entry.mode.toUpperCase()}</div>
+                            ${entry.note_text ? `<div class="timeline-note-text">${escapeHtml(entry.note_text)}</div>` : ''}
+                            ${(ratio || topCrop) ? `
+                                <div class="timeline-item-summary">
+                                    ${ratio ? `<span>NPK ${ratio}</span>` : ''}
+                                    ${topCrop ? `<span>Best crop ${topCrop.icon} ${topCrop.name} (${topCrop.score.toFixed(0)}%)</span>` : ''}
+                                </div>
+                            ` : ''}
+                            ${readingChips ? `<div class="analysis-chip-list">${readingChips}</div>` : ''}
+                        </article>
+                    `;
+                }).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function renderCrops(crops, npkAnalysis, memoryEntries, mode, entries) {
     const cropItems = crops.map(crop => {
         const symbol = crop.score >= 80 ? '✓✓✓' : crop.score >= 60 ? '✓✓' : crop.score >= 40 ? '✓' : '△';
         const profitability = (crop.yield * crop.value) / 1000;
@@ -450,7 +577,10 @@ function renderCrops(crops, npkAnalysis) {
         </section>
     ` : '<section class="crops-section"><h3>TOP CROPS FOR YOUR SOIL</h3><p class="crops-placeholder">⏳ Awaiting crop recommendation data...</p></section>';
 
-    document.getElementById('cropsContent').innerHTML = `${npkSection}${cropsSection}`;
+    const memorySection = renderAnalysisMemory(memoryEntries, mode);
+    const timelineSection = renderTimelineEntries(entries, mode);
+
+    document.getElementById('cropsContent').innerHTML = `${npkSection}${timelineSection}${memorySection}${cropsSection}`;
 }
 
 function formatGraphNumber(value) {
@@ -624,6 +754,17 @@ function setupEventListeners() {
     document.getElementById('runAnalysisBtn').addEventListener('click', async () => {
         await runManualAnalysis();
     });
+
+    document.getElementById('saveDiaryNoteBtn').addEventListener('click', async () => {
+        await saveDiaryNote();
+    });
+
+    document.getElementById('diaryNoteInput').addEventListener('keydown', async (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            await saveDiaryNote();
+        }
+    });
     
     // Set selector
     document.getElementById('setSelector').addEventListener('change', async (e) => {
@@ -711,6 +852,42 @@ async function runManualAnalysis() {
         alert('Error running analysis');
     } finally {
         updateModeControls();
+    }
+}
+
+async function saveDiaryNote() {
+    const input = document.getElementById('diaryNoteInput');
+    const button = document.getElementById('saveDiaryNoteBtn');
+    const note = input.value.trim();
+
+    if (!note) {
+        input.focus();
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = '⏳ SAVING...';
+
+    try {
+        const response = await fetch('/api/timeline/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note })
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'note save failed');
+        }
+
+        input.value = '';
+        timelineEntries = Array.isArray(data.timeline_entries) ? data.timeline_entries : timelineEntries;
+        await updateSensorData();
+    } catch (error) {
+        console.error('Error saving diary note:', error);
+        alert('Error saving diary note');
+    } finally {
+        button.disabled = false;
+        button.textContent = '📝 SAVE NOTE';
     }
 }
 

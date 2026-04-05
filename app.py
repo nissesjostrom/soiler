@@ -11,6 +11,7 @@ import serial
 import threading
 import json
 import os
+import sqlite3
 import time
 from datetime import datetime
 from collections import deque
@@ -23,6 +24,11 @@ SLAVE_ID = 1
 DEFAULT_POLL_INTERVAL = 10.0  # seconds
 POLL_INTERVAL = DEFAULT_POLL_INTERVAL
 MODBUS_REGISTER_COUNT = 8
+NUTRIENT_UNIT = "mg/kg"
+ANALYSIS_DB_FILE = os.path.expanduser("~/.8sense_analysis.sqlite3")
+ANALYSIS_MEMORY_LIMIT = 20
+TIMELINE_ENTRY_LIMIT = 60
+TIMELINE_STORAGE_LIMIT = 1500
 
 ALLOWED_POLL_INTERVALS = (10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0)
 
@@ -47,9 +53,9 @@ DEFAULT_READINGS = [
     ("Temperature", "°C", 10, 5, 40),
     ("EC", "µS/cm", 1, 0, 2000),
     ("pH", "", 10, 5.5, 7.5),
-    ("Nitrogen", "mg/kg", 1, 0, 200),
-    ("Phosphorus", "mg/kg", 1, 0, 200),
-    ("Potassium", "mg/kg", 1, 0, 200),
+    ("Nitrogen", NUTRIENT_UNIT, 1, 0, 200),
+    ("Phosphorus", NUTRIENT_UNIT, 1, 0, 200),
+    ("Potassium", NUTRIENT_UNIT, 1, 0, 200),
     ("Salinity", "ppt", 10, 0, 2),
 ]
 
@@ -109,6 +115,48 @@ port = None
 serial_thread = None
 stop_event = threading.Event()
 port_lock = threading.Lock()
+analysis_db_lock = threading.Lock()
+
+
+def init_analysis_db():
+    """Ensure the persistent analysis-memory database exists."""
+    with sqlite3.connect(ANALYSIS_DB_FILE) as conn:
+        conn.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS analysis_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                set_id INTEGER NOT NULL,
+                set_name TEXT NOT NULL,
+                values_json TEXT NOT NULL,
+                npk_json TEXT,
+                crops_json TEXT
+            )
+            '''
+        )
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_analysis_memory_set_created ON analysis_memory(set_id, created_at DESC)'
+        )
+        conn.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS timeline_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                set_id INTEGER NOT NULL,
+                set_name TEXT NOT NULL,
+                entry_type TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                note_text TEXT,
+                values_json TEXT,
+                npk_json TEXT,
+                crops_json TEXT
+            )
+            '''
+        )
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_timeline_entries_set_created ON timeline_entries(set_id, created_at DESC)'
+        )
+        conn.commit()
 
 # Configuration functions
 def init_default_sets():
@@ -434,6 +482,213 @@ def build_npk_analysis(values):
         'comparison_note': 'Commercial fertilizer labels are compared by relative N-P-K proportions.',
     }
 
+
+def build_sensor_payload(values):
+    """Build API-friendly sensor readings for the active set."""
+    sensor_values = []
+    if values is None:
+        return sensor_values
+
+    for (_, name, unit, _, min_w, max_w), value in zip(READINGS, values):
+        sensor_values.append({
+            'name': name,
+            'unit': unit,
+            'value': value,
+            'min': min_w,
+            'max': max_w,
+            'status': 'unavailable' if value is None else ('good' if min_w <= value <= max_w else 'warning')
+        })
+
+    return sensor_values
+
+
+def build_crop_recommendations(values):
+    """Calculate crop recommendations for the current reading set."""
+    crops = []
+    moisture = get_sensor_value_by_default_index(values, 0)
+    temp = get_sensor_value_by_default_index(values, 1)
+    ec_raw = get_sensor_value_by_default_index(values, 2)
+    ph = get_sensor_value_by_default_index(values, 3)
+    nitrogen = get_sensor_value_by_default_index(values, 4)
+
+    if None in (moisture, temp, ec_raw, ph, nitrogen):
+        return crops
+
+    ec = ec_raw / 1000 if ec_raw > 0 else 0.5
+    scores = {}
+    for crop_name, crop_data in CROPS.items():
+        score = calculate_crop_score(crop_data, moisture, temp, ec, ph, nitrogen)
+        scores[crop_name] = score
+
+    sorted_crops = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    for rank, (crop_name, score) in enumerate(sorted_crops[:6], 1):
+        crop_data = CROPS[crop_name]
+        crops.append({
+            'rank': rank,
+            'name': crop_name,
+            'icon': crop_data['icon'],
+            'score': score,
+            'yield': crop_data['yield'],
+            'value': crop_data['value']
+        })
+
+    return crops
+
+
+def build_capture_snapshot(values):
+    """Build the full derived payload for one captured reading set."""
+    return {
+        'sensor_values': build_sensor_payload(values),
+        'npk_analysis': build_npk_analysis(values),
+        'crops': build_crop_recommendations(values),
+    }
+
+
+def save_analysis_snapshot(created_at: str, set_id: int, set_name: str, sensor_values, npk_analysis, crops):
+    """Persist one manual analysis capture to SQLite."""
+    with analysis_db_lock:
+        with sqlite3.connect(ANALYSIS_DB_FILE) as conn:
+            conn.execute(
+                '''
+                INSERT INTO analysis_memory (
+                    created_at, set_id, set_name, values_json, npk_json, crops_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    created_at,
+                    set_id,
+                    set_name,
+                    json.dumps(sensor_values),
+                    json.dumps(npk_analysis) if npk_analysis is not None else None,
+                    json.dumps(crops),
+                )
+            )
+            conn.commit()
+
+
+def trim_timeline_storage(conn):
+    """Keep timeline storage bounded."""
+    conn.execute(
+        '''
+        DELETE FROM timeline_entries
+        WHERE id NOT IN (
+            SELECT id FROM timeline_entries
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+        )
+        ''',
+        (TIMELINE_STORAGE_LIMIT,)
+    )
+
+
+def save_timeline_entry(entry_type: str, mode: str, set_id: int, set_name: str,
+                        sensor_values=None, npk_analysis=None, crops=None,
+                        note_text: str = None, created_at: str = None):
+    """Persist one timeline event for readings or diary notes."""
+    safe_entry_type = entry_type if entry_type in ('reading', 'note') else 'note'
+    safe_mode = mode if mode in ('analysis', 'continuous') else 'continuous'
+    timestamp = created_at or datetime.now().isoformat()
+
+    with analysis_db_lock:
+        with sqlite3.connect(ANALYSIS_DB_FILE) as conn:
+            conn.execute(
+                '''
+                INSERT INTO timeline_entries (
+                    created_at, set_id, set_name, entry_type, mode, note_text,
+                    values_json, npk_json, crops_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    timestamp,
+                    set_id,
+                    set_name,
+                    safe_entry_type,
+                    safe_mode,
+                    note_text,
+                    json.dumps(sensor_values) if sensor_values is not None else None,
+                    json.dumps(npk_analysis) if npk_analysis is not None else None,
+                    json.dumps(crops) if crops is not None else None,
+                )
+            )
+            trim_timeline_storage(conn)
+            conn.commit()
+
+
+def get_analysis_memory(set_id=None, limit: int = ANALYSIS_MEMORY_LIMIT):
+    """Return recent saved analysis captures, optionally filtered by set."""
+    query = '''
+        SELECT id, created_at, set_id, set_name, values_json, npk_json, crops_json
+        FROM analysis_memory
+    '''
+    params = []
+    if set_id is not None:
+        query += ' WHERE set_id = ?'
+        params.append(int(set_id))
+
+    query += ' ORDER BY created_at DESC, id DESC LIMIT ?'
+    params.append(int(limit))
+
+    with analysis_db_lock:
+        with sqlite3.connect(ANALYSIS_DB_FILE) as conn:
+            rows = conn.execute(query, params).fetchall()
+
+    memory = []
+    for row in rows:
+        values_json = row[4] or '[]'
+        npk_json = row[5] or 'null'
+        crops_json = row[6] or '[]'
+        memory.append({
+            'id': row[0],
+            'created_at': row[1],
+            'set_id': row[2],
+            'set_name': row[3],
+            'values': json.loads(values_json),
+            'npk_analysis': json.loads(npk_json),
+            'crops': json.loads(crops_json),
+        })
+
+    return memory
+
+
+def get_timeline_entries(set_id=None, limit: int = TIMELINE_ENTRY_LIMIT):
+    """Return recent timeline entries, optionally filtered by set."""
+    query = '''
+        SELECT id, created_at, set_id, set_name, entry_type, mode, note_text,
+               values_json, npk_json, crops_json
+        FROM timeline_entries
+    '''
+    params = []
+    if set_id is not None:
+        query += ' WHERE set_id = ?'
+        params.append(int(set_id))
+
+    query += ' ORDER BY created_at DESC, id DESC LIMIT ?'
+    params.append(int(limit))
+
+    with analysis_db_lock:
+        with sqlite3.connect(ANALYSIS_DB_FILE) as conn:
+            rows = conn.execute(query, params).fetchall()
+
+    entries = []
+    for row in rows:
+        entries.append({
+            'id': row[0],
+            'created_at': row[1],
+            'set_id': row[2],
+            'set_name': row[3],
+            'entry_type': row[4],
+            'mode': row[5],
+            'note_text': row[6],
+            'values': json.loads(row[7] or '[]'),
+            'npk_analysis': json.loads(row[8] or 'null'),
+            'crops': json.loads(row[9] or '[]'),
+        })
+
+    return entries
+
+
+init_analysis_db()
+
 # Modbus RTU functions
 def crc16(data: bytes) -> int:
     crc = 0xFFFF
@@ -481,7 +736,7 @@ def read_registers():
         return None
 
 
-def perform_sensor_read(update_history: bool = True):
+def perform_sensor_read(update_history: bool = True, persist_timeline: bool = True):
     """Run one sensor read and update shared state."""
     global current_values, sensor_status, last_update
 
@@ -495,6 +750,21 @@ def perform_sensor_read(update_history: bool = True):
     last_update = datetime.now().isoformat()
     if update_history:
         add_history_sample(values, datetime.now())
+
+    if persist_timeline:
+        snapshot = build_capture_snapshot(values)
+        set_name = SENSOR_SETS.get(ACTIVE_SET, {}).get('name', f'Set {ACTIVE_SET + 1}')
+        save_timeline_entry(
+            'reading',
+            OPERATION_MODE,
+            ACTIVE_SET,
+            set_name,
+            sensor_values=snapshot['sensor_values'],
+            npk_analysis=snapshot['npk_analysis'],
+            crops=snapshot['crops'],
+            created_at=last_update,
+        )
+
     sensor_status = '● Continuous mode' if OPERATION_MODE == 'continuous' else '✔ Analysis captured'
     return True
 
@@ -522,7 +792,7 @@ def sensor_worker():
         port.close()
 
 # Flask routes
-@app.route('/')
+@app.route('/', methods=['GET'])
 def index():
     """Serve the web UI."""
     return render_template(
@@ -530,7 +800,7 @@ def index():
         is_mobile=is_mobile_user_agent(request.headers.get('User-Agent', ''))
     )
 
-@app.route('/api/settings')
+@app.route('/api/settings', methods=['GET'])
 def get_settings():
     """Get current settings and configuration."""
     return jsonify({
@@ -545,50 +815,14 @@ def get_settings():
         'default_readings': [{'name': name, 'unit': unit} for name, unit, *_ in DEFAULT_READINGS]
     })
 
-@app.route('/api/data')
+@app.route('/api/data', methods=['GET'])
 def get_data():
     """Get current sensor data."""
-    sensor_values = []
-    if current_values is not None:
-        for (_, name, unit, _, min_w, max_w), value in zip(READINGS, current_values):
-            sensor_values.append({
-                'name': name,
-                'unit': unit,
-                'value': value,
-                'min': min_w,
-                'max': max_w,
-                'status': 'unavailable' if value is None else ('good' if min_w <= value <= max_w else 'warning')
-            })
-    
+    sensor_values = build_sensor_payload(current_values)
     npk_analysis = build_npk_analysis(current_values)
-
-    # Calculate crop recommendations
-    crops = []
-    moisture = get_sensor_value_by_default_index(current_values, 0)
-    temp = get_sensor_value_by_default_index(current_values, 1)
-    ec_raw = get_sensor_value_by_default_index(current_values, 2)
-    ph = get_sensor_value_by_default_index(current_values, 3)
-    nitrogen = get_sensor_value_by_default_index(current_values, 4)
-
-    if None not in (moisture, temp, ec_raw, ph, nitrogen):
-        ec = ec_raw / 1000 if ec_raw > 0 else 0.5
-        
-        scores = {}
-        for crop_name, crop_data in CROPS.items():
-            score = calculate_crop_score(crop_data, moisture, temp, ec, ph, nitrogen)
-            scores[crop_name] = score
-        
-        sorted_crops = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        for rank, (crop_name, score) in enumerate(sorted_crops[:6], 1):
-            crop_data = CROPS[crop_name]
-            crops.append({
-                'rank': rank,
-                'name': crop_name,
-                'icon': crop_data['icon'],
-                'score': score,
-                'yield': crop_data['yield'],
-                'value': crop_data['value']
-            })
+    crops = build_crop_recommendations(current_values)
+    analysis_memory = get_analysis_memory(ACTIVE_SET)
+    timeline_entries = get_timeline_entries(ACTIVE_SET)
     
     serialized_history_ranges = get_serialized_history_ranges()
 
@@ -600,6 +834,8 @@ def get_data():
         'values': sensor_values,
         'crops': crops,
         'npk_analysis': npk_analysis,
+        'analysis_memory': analysis_memory,
+        'timeline_entries': timeline_entries,
         'history': serialized_history_ranges.get('day', []),
         'history_ranges': serialized_history_ranges
     })
@@ -673,11 +909,65 @@ def run_analysis():
         return jsonify({'success': False, 'error': 'analysis mode is not active'}), 400
 
     success = perform_sensor_read(update_history=True)
-    return jsonify({'success': success, 'status': sensor_status, 'last_update': last_update})
+    if success:
+        snapshot = build_capture_snapshot(current_values)
+        set_name = SENSOR_SETS.get(ACTIVE_SET, {}).get('name', f'Set {ACTIVE_SET + 1}')
+        save_analysis_snapshot(
+            last_update,
+            ACTIVE_SET,
+            set_name,
+            snapshot['sensor_values'],
+            snapshot['npk_analysis'],
+            snapshot['crops'],
+        )
+
+    return jsonify({
+        'success': success,
+        'status': sensor_status,
+        'last_update': last_update,
+        'analysis_memory': get_analysis_memory(ACTIVE_SET),
+        'timeline_entries': get_timeline_entries(ACTIVE_SET)
+    })
+
+
+@app.route('/api/timeline/note', methods=['POST'])
+def save_timeline_note():
+    """Store a diary-style note in the same timeline as readings."""
+    data = request.json or {}
+    note_text = str(data.get('note', '')).strip()
+    if not note_text:
+        return jsonify({'success': False, 'error': 'note is required'}), 400
+
+    note_text = note_text[:2000]
+    set_name = SENSOR_SETS.get(ACTIVE_SET, {}).get('name', f'Set {ACTIVE_SET + 1}')
+    snapshot = build_capture_snapshot(current_values) if current_values is not None else {
+        'sensor_values': [],
+        'npk_analysis': None,
+        'crops': [],
+    }
+    created_at = datetime.now().isoformat()
+    save_timeline_entry(
+        'note',
+        OPERATION_MODE,
+        ACTIVE_SET,
+        set_name,
+        sensor_values=snapshot['sensor_values'],
+        npk_analysis=snapshot['npk_analysis'],
+        crops=snapshot['crops'],
+        note_text=note_text,
+        created_at=created_at,
+    )
+
+    return jsonify({
+        'success': True,
+        'created_at': created_at,
+        'timeline_entries': get_timeline_entries(ACTIVE_SET)
+    })
 
 if __name__ == '__main__':
     # Load configuration
     load_sensor_sets()
+    init_analysis_db()
     names, enabled = get_active_set_data()
     update_readings(names, enabled)
     clear_history_ranges()

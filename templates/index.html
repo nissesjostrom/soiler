@@ -55,6 +55,14 @@
                 <div id="crops-tab" class="tab-content active">
                     <div class="crops-box">
                         <h2>🌾 CROP RECOMMENDATIONS 🌾</h2>
+                        <div class="diary-composer">
+                            <label for="diaryNoteInput">PLANT DIARY:</label>
+                            <textarea id="diaryNoteInput" class="diary-note-input" placeholder="Add notes about watering, pruning, fertilizing, transplanting, pests, harvests..." rows="3"></textarea>
+                            <div class="diary-composer-actions">
+                                <span class="diary-composer-hint">Stored in the same timeline as continuous and analysis readings.</span>
+                                <button id="saveDiaryNoteBtn" class="btn-save">📝 SAVE NOTE</button>
+                            </div>
+                        </div>
                         <div id="cropsContent" class="crops-content">
                             <p>⏳ Awaiting sensor data...</p>
                         </div>
