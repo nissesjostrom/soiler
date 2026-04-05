@@ -737,6 +737,203 @@ html, body {
     }
 }
 
+body[data-device="mobile"] {
+    overflow: auto;
+}
+
+body[data-device="mobile"] .container {
+    min-height: 100vh;
+    height: auto;
+}
+
+body[data-device="mobile"] .title-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px;
+    margin: 10px 10px 0;
+}
+
+body[data-device="mobile"] .title-left,
+body[data-device="mobile"] .title-center,
+body[data-device="mobile"] .title-right {
+    width: 100%;
+    text-align: center;
+}
+
+body[data-device="mobile"] .title-center h1 {
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+body[data-device="mobile"] .btn-settings {
+    width: 100%;
+    min-height: 48px;
+}
+
+body[data-device="mobile"] .set-selector-wrapper {
+    flex-direction: column;
+    gap: 8px;
+}
+
+body[data-device="mobile"] .set-selector-wrapper select {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+}
+
+body[data-device="mobile"] .title-right {
+    padding: 10px 12px;
+}
+
+body[data-device="mobile"] .main-content {
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px;
+    overflow: visible;
+}
+
+body[data-device="mobile"] .left-panel,
+body[data-device="mobile"] .right-panel {
+    flex: none;
+    width: 100%;
+    overflow: visible;
+}
+
+body[data-device="mobile"] .sensor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    overflow: visible;
+    padding-right: 0;
+}
+
+body[data-device="mobile"] .sensor-card {
+    min-height: 108px;
+    padding: 10px 8px;
+}
+
+body[data-device="mobile"] .sensor-card-value {
+    font-size: 22px;
+}
+
+body[data-device="mobile"] .tabs {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--page-bg);
+    padding-bottom: 4px;
+}
+
+body[data-device="mobile"] .tab-btn {
+    min-height: 46px;
+    padding: 10px 12px;
+}
+
+body[data-device="mobile"] .tab-content {
+    min-height: 0;
+}
+
+body[data-device="mobile"] .tab-content.active {
+    display: block;
+}
+
+body[data-device="mobile"] .crops-box,
+body[data-device="mobile"] .history-box {
+    min-height: 320px;
+}
+
+body[data-device="mobile"] .crops-content,
+body[data-device="mobile"] .history-content,
+body[data-device="mobile"] .graph-content {
+    min-height: 240px;
+}
+
+body[data-device="mobile"] .graph-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+body[data-device="mobile"] .graph-toolbar select {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+}
+
+body[data-device="mobile"] .graph-legend {
+    justify-content: flex-start;
+}
+
+body[data-device="mobile"] .graph-legend-item {
+    width: 100%;
+    min-height: 42px;
+}
+
+body[data-device="mobile"] .graph-content {
+    min-height: 260px;
+}
+
+body[data-device="mobile"] .graph-stats {
+    font-size: 11px;
+}
+
+body[data-device="mobile"] .modal {
+    align-items: flex-end;
+}
+
+body[data-device="mobile"] .modal-content {
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    padding: 12px;
+}
+
+body[data-device="mobile"] .form-group {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+body[data-device="mobile"] .form-group label {
+    min-width: 0;
+}
+
+body[data-device="mobile"] .form-group input,
+body[data-device="mobile"] .form-group select {
+    width: 100%;
+    min-height: 44px;
+}
+
+body[data-device="mobile"] .sensor-config-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 8px;
+    align-items: center;
+}
+
+body[data-device="mobile"] .sensor-config-row span {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding-left: 30px;
+}
+
+body[data-device="mobile"] .sensor-config-row input[type="text"] {
+    min-height: 42px;
+}
+
+body[data-device="mobile"] .modal-footer {
+    flex-direction: column;
+}
+
+body[data-device="mobile"] .modal-footer button {
+    min-height: 46px;
+}
+
+body[data-device="mobile"] .graph-point-label {
+    font-size: 9px;
+}
+
 /* Scrollbar styling for all browsers */
 ::-webkit-scrollbar {
     width: 12px;

@@ -6,7 +6,7 @@
     <title>SOIL SENSOR v2.0 — Web Edition</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body data-device="{{ 'mobile' if is_mobile else 'desktop' }}">
     <div class="container">
         <!-- Title Bar -->
         <div class="title-bar">

@@ -32,6 +32,11 @@ HISTORY_RANGE_CONFIG = {
 }
 app.config['JSON_SORT_KEYS'] = False
 
+MOBILE_USER_AGENT_HINTS = (
+    'android', 'iphone', 'ipad', 'ipod', 'mobile', 'blackberry',
+    'windows phone', 'opera mini', 'opera mobi', 'webos'
+)
+
 # Default sensor configuration (10 sensors total)
 DEFAULT_READINGS = [
     # (name, unit, scale, min_warn, max_warn)
@@ -257,6 +262,14 @@ def clear_history_ranges():
     }
     history_buckets = {name: None for name in HISTORY_RANGE_CONFIG}
 
+def is_mobile_user_agent(user_agent: str) -> bool:
+    """Return True when the request likely comes from a mobile device."""
+    if not user_agent:
+        return False
+
+    normalized = user_agent.lower()
+    return any(hint in normalized for hint in MOBILE_USER_AGENT_HINTS)
+
 def calculate_crop_score(crop: dict, moisture: float, temp: float, ec: float, ph: float, nitrogen: float) -> float:
     """Score a crop based on current soil conditions (0-100)."""
     score = 100.0
@@ -368,7 +381,10 @@ def sensor_worker():
 @app.route('/')
 def index():
     """Serve the web UI."""
-    return render_template('index.html')
+    return render_template(
+        'index.html',
+        is_mobile=is_mobile_user_agent(request.headers.get('User-Agent', ''))
+    )
 
 @app.route('/api/settings')
 def get_settings():
