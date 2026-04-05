@@ -561,7 +561,7 @@ def update_config():
 
     SENSOR_SETS[ACTIVE_SET] = normalize_sensor_set(current_set, current_set['name'])
 
-    if 'ui_theme' in data and data['ui_theme'] in ('retro', 'garden', 'speakeasy'):
+    if 'ui_theme' in data and data['ui_theme'] in ('retro', 'garden', 'speakeasy', 'studio54'):
         UI_THEME = data['ui_theme']
     if 'operation_mode' in data:
         set_operation_mode(data['operation_mode'])

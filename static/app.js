@@ -71,7 +71,7 @@ function setSensorColor(sensorName, color) {
 }
 
 function applyTheme(themeName) {
-    uiTheme = ['retro', 'garden', 'speakeasy'].includes(themeName) ? themeName : 'retro';
+    uiTheme = ['retro', 'garden', 'speakeasy', 'studio54'].includes(themeName) ? themeName : 'retro';
     document.body.dataset.theme = uiTheme;
 
     const selector = document.getElementById('themeSelect');
