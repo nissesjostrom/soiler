@@ -83,6 +83,17 @@ CROPS = {
     "Raspberry": {"pH": (6.0, 7.0), "moisture": (65, 75), "EC": (1.0, 1.5), "N": 120, "yield": 10, "value": 4.0, "icon": "🫐"},
 }
 
+COMMERCIAL_FERTILIZERS = [
+    {"name": "Balanced All-Purpose", "label": "10-10-10", "ratio": (10.0, 10.0, 10.0), "use": "general maintenance"},
+    {"name": "Water-Soluble Balanced", "label": "20-20-20", "ratio": (20.0, 20.0, 20.0), "use": "fast all-purpose feeding"},
+    {"name": "Starter Feed", "label": "5-10-10", "ratio": (5.0, 10.0, 10.0), "use": "root establishment"},
+    {"name": "Bloom Booster", "label": "10-30-20", "ratio": (10.0, 30.0, 20.0), "use": "flowering and fruiting"},
+    {"name": "Lawn Feed", "label": "15-5-10", "ratio": (15.0, 5.0, 10.0), "use": "leaf-heavy growth"},
+    {"name": "Foliage Formula", "label": "3-1-2", "ratio": (3.0, 1.0, 2.0), "use": "vegetative growth"},
+    {"name": "Houseplant Feed", "label": "24-8-16", "ratio": (24.0, 8.0, 16.0), "use": "container feeding"},
+    {"name": "Fruit & Flower", "label": "4-6-8", "ratio": (4.0, 6.0, 8.0), "use": "flower and fruit support"},
+]
+
 # Global state
 SENSOR_SETS = {}
 ACTIVE_SET = 0
@@ -360,6 +371,69 @@ def calculate_crop_score(crop: dict, moisture: float, temp: float, ec: float, ph
     
     return max(0, min(100, score))
 
+
+def normalize_ratio(values):
+    """Normalize numeric values so they sum to 1.0."""
+    numeric_values = [max(float(value), 0.0) for value in values]
+    total = sum(numeric_values)
+    if total <= 0:
+        return None
+    return [value / total for value in numeric_values]
+
+
+def build_npk_analysis(values):
+    """Build an NPK ratio summary and compare it to common commercial fertilizers."""
+    nitrogen = get_sensor_value_by_default_index(values, 4)
+    phosphorus = get_sensor_value_by_default_index(values, 5)
+    potassium = get_sensor_value_by_default_index(values, 6)
+
+    if None in (nitrogen, phosphorus, potassium):
+        return None
+
+    actual_values = [max(float(nitrogen), 0.0), max(float(phosphorus), 0.0), max(float(potassium), 0.0)]
+    normalized_actual = normalize_ratio(actual_values)
+    if normalized_actual is None:
+        return None
+
+    max_value = max(actual_values) or 1.0
+    ratio_to_peak = [round(value / max_value, 2) for value in actual_values]
+
+    comparisons = []
+    for fertilizer in COMMERCIAL_FERTILIZERS:
+        normalized_fertilizer = normalize_ratio(fertilizer['ratio'])
+        if normalized_fertilizer is None:
+            continue
+
+        distance = sum(
+            abs(actual_part - fertilizer_part)
+            for actual_part, fertilizer_part in zip(normalized_actual, normalized_fertilizer)
+        )
+        comparisons.append({
+            'name': fertilizer['name'],
+            'label': fertilizer['label'],
+            'use': fertilizer['use'],
+            'distance': round(distance, 3),
+            'shares': [round(part * 100, 1) for part in normalized_fertilizer],
+        })
+
+    comparisons.sort(key=lambda item: item['distance'])
+
+    return {
+        'values': {
+            'nitrogen': round(actual_values[0], 1),
+            'phosphorus': round(actual_values[1], 1),
+            'potassium': round(actual_values[2], 1),
+        },
+        'ratio_to_peak': ratio_to_peak,
+        'shares': {
+            'nitrogen': round(normalized_actual[0] * 100, 1),
+            'phosphorus': round(normalized_actual[1] * 100, 1),
+            'potassium': round(normalized_actual[2] * 100, 1),
+        },
+        'closest_matches': comparisons[:4],
+        'comparison_note': 'Commercial fertilizer labels are compared by relative N-P-K proportions.',
+    }
+
 # Modbus RTU functions
 def crc16(data: bytes) -> int:
     crc = 0xFFFF
@@ -486,6 +560,8 @@ def get_data():
                 'status': 'unavailable' if value is None else ('good' if min_w <= value <= max_w else 'warning')
             })
     
+    npk_analysis = build_npk_analysis(current_values)
+
     # Calculate crop recommendations
     crops = []
     moisture = get_sensor_value_by_default_index(current_values, 0)
@@ -523,6 +599,7 @@ def get_data():
         'last_update': last_update,
         'values': sensor_values,
         'crops': crops,
+        'npk_analysis': npk_analysis,
         'history': serialized_history_ranges.get('day', []),
         'history_ranges': serialized_history_ranges
     })

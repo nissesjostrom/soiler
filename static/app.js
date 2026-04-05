@@ -360,8 +360,8 @@ async function updateSensorData() {
         });
         
         // Update crop recommendations
-        if (data.crops && data.crops.length > 0) {
-            renderCrops(data.crops);
+        if ((data.crops && data.crops.length > 0) || data.npk_analysis) {
+            renderCrops(data.crops || [], data.npk_analysis || null);
         } else {
             document.getElementById('cropsContent').innerHTML = '<p>⏳ Awaiting sensor data...</p>';
         }
@@ -384,19 +384,73 @@ async function updateSensorData() {
 }
 
 // Render crop recommendations
-function renderCrops(crops) {
-    let html = 'TOP CROPS FOR YOUR SOIL:\n';
-    html += '─'.repeat(50) + '\n\n';
-    
-    crops.forEach(crop => {
+function renderCrops(crops, npkAnalysis) {
+    const cropItems = crops.map(crop => {
         const symbol = crop.score >= 80 ? '✓✓✓' : crop.score >= 60 ? '✓✓' : crop.score >= 40 ? '✓' : '△';
         const profitability = (crop.yield * crop.value) / 1000;
-        
-        html += `${crop.rank}. ${crop.icon} ${crop.name.toUpperCase().padEnd(15)} ${symbol}  [${crop.score.toFixed(0)}%]\n`;
-        html += `   Yield: ${crop.yield.toFixed(0)}t/ha | Value: €${profitability.toFixed(1)}k/ha\n\n`;
-    });
-    
-    document.getElementById('cropsContent').textContent = html;
+        return `
+            <div class="crop-item">
+                <div class="crop-item-main">
+                    <span class="crop-rank">${crop.rank}.</span>
+                    <span class="crop-icon">${crop.icon}</span>
+                    <span class="crop-name">${crop.name}</span>
+                    <span class="crop-score">${symbol} ${crop.score.toFixed(0)}%</span>
+                </div>
+                <div class="crop-item-meta">
+                    Yield ${crop.yield.toFixed(0)} t/ha · Value €${profitability.toFixed(1)}k/ha
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const npkSection = npkAnalysis ? `
+        <section class="crops-section npk-section">
+            <h3>⚗ NPK RATIO VS COMMERCIAL FERTILIZERS</h3>
+            <div class="npk-summary">
+                <div class="npk-reading">N ${npkAnalysis.values.nitrogen}</div>
+                <div class="npk-reading">P ${npkAnalysis.values.phosphorus}</div>
+                <div class="npk-reading">K ${npkAnalysis.values.potassium}</div>
+            </div>
+            <div class="npk-ratio-line">
+                Relative ratio: ${npkAnalysis.ratio_to_peak[0].toFixed(2)} : ${npkAnalysis.ratio_to_peak[1].toFixed(2)} : ${npkAnalysis.ratio_to_peak[2].toFixed(2)}
+            </div>
+            <div class="npk-bars">
+                <div class="npk-bar-row">
+                    <span class="npk-bar-label">N</span>
+                    <div class="npk-bar-track"><div class="npk-bar-fill npk-bar-n" style="width: ${npkAnalysis.shares.nitrogen}%"></div></div>
+                    <span class="npk-bar-value">${npkAnalysis.shares.nitrogen}%</span>
+                </div>
+                <div class="npk-bar-row">
+                    <span class="npk-bar-label">P</span>
+                    <div class="npk-bar-track"><div class="npk-bar-fill npk-bar-p" style="width: ${npkAnalysis.shares.phosphorus}%"></div></div>
+                    <span class="npk-bar-value">${npkAnalysis.shares.phosphorus}%</span>
+                </div>
+                <div class="npk-bar-row">
+                    <span class="npk-bar-label">K</span>
+                    <div class="npk-bar-track"><div class="npk-bar-fill npk-bar-k" style="width: ${npkAnalysis.shares.potassium}%"></div></div>
+                    <span class="npk-bar-value">${npkAnalysis.shares.potassium}%</span>
+                </div>
+            </div>
+            <div class="npk-note">${npkAnalysis.comparison_note}</div>
+            <div class="fertilizer-list">
+                ${npkAnalysis.closest_matches.map(match => `
+                    <div class="fertilizer-item">
+                        <div class="fertilizer-title">${match.label} · ${match.name}</div>
+                        <div class="fertilizer-meta">Best for ${match.use} · difference ${match.distance.toFixed(3)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </section>
+    ` : '';
+
+    const cropsSection = crops.length > 0 ? `
+        <section class="crops-section">
+            <h3>TOP CROPS FOR YOUR SOIL</h3>
+            <div class="crop-list">${cropItems}</div>
+        </section>
+    ` : '<section class="crops-section"><h3>TOP CROPS FOR YOUR SOIL</h3><p class="crops-placeholder">⏳ Awaiting crop recommendation data...</p></section>';
+
+    document.getElementById('cropsContent').innerHTML = `${npkSection}${cropsSection}`;
 }
 
 function formatGraphNumber(value) {
