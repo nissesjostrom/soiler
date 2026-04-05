@@ -12,6 +12,7 @@ let graphRange = 'day';
 let selectedGraphSensors = [];
 let uiTheme = 'retro';
 let operationMode = 'continuous';
+let sensorPollInterval = 10;
 
 const GRAPH_COLOR_PALETTE = [
     '#00FF00', '#FF00FF', '#00FFFF', '#FFFF00', '#FF8800',
@@ -70,7 +71,7 @@ function setSensorColor(sensorName, color) {
 }
 
 function applyTheme(themeName) {
-    uiTheme = ['retro', 'garden'].includes(themeName) ? themeName : 'retro';
+    uiTheme = ['retro', 'garden', 'speakeasy'].includes(themeName) ? themeName : 'retro';
     document.body.dataset.theme = uiTheme;
 
     const selector = document.getElementById('themeSelect');
@@ -90,6 +91,7 @@ async function loadSettings() {
         defaultReadings = data.default_readings;
         applyTheme(data.ui_theme || 'retro');
         operationMode = ['analysis', 'continuous'].includes(data.operation_mode) ? data.operation_mode : 'continuous';
+        sensorPollInterval = Number.isFinite(Number(data.sensor_poll_interval)) ? Number(data.sensor_poll_interval) : 10;
         if (graphSensorIndex >= sensorReadings.length) {
             graphSensorIndex = 0;
         }
@@ -111,6 +113,7 @@ function updateModeControls() {
     const selector = document.getElementById('modeSelector');
     const button = document.getElementById('runAnalysisBtn');
     const modalSelector = document.getElementById('modalModeSelect');
+    const pollSelector = document.getElementById('pollIntervalSelect');
 
     if (selector) {
         selector.value = operationMode;
@@ -118,6 +121,10 @@ function updateModeControls() {
 
     if (modalSelector) {
         modalSelector.value = operationMode;
+    }
+
+    if (pollSelector) {
+        pollSelector.value = String(sensorPollInterval);
     }
 
     if (button) {
@@ -264,6 +271,7 @@ function renderSensorConfigForm() {
     document.getElementById('setNameInput').value = setName;
     document.getElementById('themeSelect').value = uiTheme;
     document.getElementById('modalModeSelect').value = operationMode;
+    document.getElementById('pollIntervalSelect').value = String(sensorPollInterval);
     
     defaultReadings.forEach((reading, index) => {
         const names = sensorSets[activeSet]?.names || [];
@@ -309,7 +317,7 @@ function startPolling() {
     updateSensorData();
 
     if (operationMode === 'continuous') {
-        pollInterval = setInterval(updateSensorData, 2000);
+        pollInterval = setInterval(updateSensorData, sensorPollInterval * 1000);
     }
 }
 
@@ -318,8 +326,15 @@ async function updateSensorData() {
     try {
         const response = await fetch('/api/data');
         const data = await response.json();
+        const previousPollInterval = sensorPollInterval;
         operationMode = ['analysis', 'continuous'].includes(data.operation_mode) ? data.operation_mode : operationMode;
+        sensorPollInterval = Number.isFinite(Number(data.sensor_poll_interval)) ? Number(data.sensor_poll_interval) : sensorPollInterval;
         updateModeControls();
+
+        if (operationMode === 'continuous' && previousPollInterval !== sensorPollInterval) {
+            startPolling();
+            return;
+        }
         
         // Update status bar
         document.getElementById('statusBar').textContent = data.status;
@@ -661,6 +676,7 @@ async function saveConfig() {
     const setName = document.getElementById('setNameInput').value.trim() || `Set ${activeSet + 1}`;
     const selectedTheme = document.getElementById('themeSelect').value;
     const selectedMode = document.getElementById('modalModeSelect').value;
+    const selectedPollInterval = Number(document.getElementById('pollIntervalSelect').value) || sensorPollInterval;
     
     const names = [];
     const enabled = [];
@@ -682,7 +698,8 @@ async function saveConfig() {
                 names,
                 enabled,
                 ui_theme: selectedTheme,
-                operation_mode: selectedMode
+                operation_mode: selectedMode,
+                sensor_poll_interval: selectedPollInterval
             })
         });
         
@@ -690,6 +707,7 @@ async function saveConfig() {
         if (data.success) {
             applyTheme(selectedTheme);
             operationMode = ['analysis', 'continuous'].includes(selectedMode) ? selectedMode : operationMode;
+            sensorPollInterval = selectedPollInterval;
             updateModeControls();
             await loadSettings();
             latestHistory = { hour: [], day: [], week: [], month: [], year: [] };

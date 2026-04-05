@@ -20,8 +20,11 @@ app = Flask(__name__)
 PORT = "/dev/ttyUSB0"
 BAUD = 9600
 SLAVE_ID = 1
-POLL_INTERVAL = 2.0  # seconds
+DEFAULT_POLL_INTERVAL = 10.0  # seconds
+POLL_INTERVAL = DEFAULT_POLL_INTERVAL
 MODBUS_REGISTER_COUNT = 8
+
+ALLOWED_POLL_INTERVALS = (10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0)
 
 HISTORY_RANGE_CONFIG = {
     'hour': {'maxlen': 60},
@@ -85,6 +88,7 @@ SENSOR_SETS = {}
 ACTIVE_SET = 0
 UI_THEME = 'retro'
 OPERATION_MODE = 'continuous'
+SENSOR_POLL_INTERVAL = DEFAULT_POLL_INTERVAL
 current_values = None
 history_ranges = {name: deque(maxlen=config['maxlen']) for name, config in HISTORY_RANGE_CONFIG.items()}
 history_buckets = {name: None for name in HISTORY_RANGE_CONFIG}
@@ -132,7 +136,7 @@ def normalize_sensor_set(set_data, fallback_name):
 
 def load_sensor_sets():
     """Load all 10 sensor sets from file."""
-    global SENSOR_SETS, ACTIVE_SET, UI_THEME, OPERATION_MODE
+    global SENSOR_SETS, ACTIVE_SET, UI_THEME, OPERATION_MODE, SENSOR_POLL_INTERVAL, POLL_INTERVAL
     init_default_sets()
     
     if os.path.exists(CONFIG_FILE):
@@ -148,6 +152,10 @@ def load_sensor_sets():
                 OPERATION_MODE = config.get('operation_mode', 'continuous')
                 if OPERATION_MODE not in ('analysis', 'continuous'):
                     OPERATION_MODE = 'continuous'
+                SENSOR_POLL_INTERVAL = float(config.get('sensor_poll_interval', DEFAULT_POLL_INTERVAL))
+                if SENSOR_POLL_INTERVAL not in ALLOWED_POLL_INTERVALS:
+                    SENSOR_POLL_INTERVAL = DEFAULT_POLL_INTERVAL
+                POLL_INTERVAL = SENSOR_POLL_INTERVAL
         except Exception as e:
             print(f"Error loading sets: {e}")
 
@@ -159,6 +167,7 @@ def save_sensor_sets():
             'active_set': ACTIVE_SET,
             'ui_theme': UI_THEME,
             'operation_mode': OPERATION_MODE,
+            'sensor_poll_interval': SENSOR_POLL_INTERVAL,
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
@@ -176,6 +185,22 @@ def set_operation_mode(mode: str):
             sensor_status = '◼ Analysis mode — waiting for manual run'
         else:
             sensor_status = '● Continuous mode'
+
+
+def set_sensor_poll_interval(interval_seconds):
+    """Update the global sensor polling interval."""
+    global SENSOR_POLL_INTERVAL, POLL_INTERVAL
+
+    try:
+        interval_value = float(interval_seconds)
+    except (TypeError, ValueError):
+        interval_value = DEFAULT_POLL_INTERVAL
+
+    if interval_value not in ALLOWED_POLL_INTERVALS:
+        interval_value = DEFAULT_POLL_INTERVAL
+
+    SENSOR_POLL_INTERVAL = interval_value
+    POLL_INTERVAL = interval_value
 
 def get_active_set_data():
     """Get names and enabled list for active set."""
@@ -439,6 +464,8 @@ def get_settings():
         'active_set': ACTIVE_SET,
         'ui_theme': UI_THEME,
         'operation_mode': OPERATION_MODE,
+        'sensor_poll_interval': SENSOR_POLL_INTERVAL,
+        'allowed_poll_intervals': [int(value) for value in ALLOWED_POLL_INTERVALS],
         'readings': [{'name': name, 'unit': unit, 'min': min_w, 'max': max_w}
                      for _, name, unit, _, min_w, max_w in READINGS],
         'default_readings': [{'name': name, 'unit': unit} for name, unit, *_ in DEFAULT_READINGS]
@@ -492,6 +519,7 @@ def get_data():
     return jsonify({
         'status': sensor_status,
         'operation_mode': OPERATION_MODE,
+        'sensor_poll_interval': SENSOR_POLL_INTERVAL,
         'last_update': last_update,
         'values': sensor_values,
         'crops': crops,
@@ -533,10 +561,12 @@ def update_config():
 
     SENSOR_SETS[ACTIVE_SET] = normalize_sensor_set(current_set, current_set['name'])
 
-    if 'ui_theme' in data and data['ui_theme'] in ('retro', 'garden'):
+    if 'ui_theme' in data and data['ui_theme'] in ('retro', 'garden', 'speakeasy'):
         UI_THEME = data['ui_theme']
     if 'operation_mode' in data:
         set_operation_mode(data['operation_mode'])
+    if 'sensor_poll_interval' in data:
+        set_sensor_poll_interval(data['sensor_poll_interval'])
     
     save_sensor_sets()
     names, enabled = get_active_set_data()
