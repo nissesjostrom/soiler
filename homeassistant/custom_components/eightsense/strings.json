@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to 8sense",
+        "description": "Add a local 8sense soil sensor API.",
+        "data": {
+          "name": "Name",
+          "host": "Host or IP address",
+          "port": "Port",
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the 8sense API.",
+      "unknown": "Unexpected error"
+    }
+  }
+}

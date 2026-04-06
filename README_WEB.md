@@ -154,9 +154,18 @@ Configuration saved to `~/.8sense_config.json`:
 GET  /                 # Web UI
 GET  /api/settings     # Sensor configuration
 GET  /api/data         # Current sensor values & recommendations
+GET  /api/homeassistant # Home Assistant device payload
 POST /api/set/<id>     # Switch active sensor set
 POST /api/config       # Update sensor names/enabled
 ```
+
+## 🏠 Home Assistant
+
+A ready-to-copy custom integration is included in [homeassistant/README.md](homeassistant/README.md).
+
+- Integration source: [homeassistant/custom_components/eightsense](homeassistant/custom_components/eightsense)
+- API endpoint used by Home Assistant: `GET /api/homeassistant`
+- Exposes the soil readings as separate sensor entities under one Home Assistant device
 
 ## 🔧 Troubleshooting
 

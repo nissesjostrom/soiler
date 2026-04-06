@@ -59,6 +59,65 @@ DEFAULT_READINGS = [
     ("Salinity", "ppt", 10, 0, 2),
 ]
 
+HOME_ASSISTANT_SENSOR_META = {
+    0: {
+        'key': 'moisture',
+        'device_class': 'moisture',
+        'state_class': 'measurement',
+        'icon': 'mdi:water-percent',
+    },
+    1: {
+        'key': 'temperature',
+        'device_class': 'temperature',
+        'state_class': 'measurement',
+        'icon': 'mdi:thermometer',
+    },
+    2: {
+        'key': 'ec',
+        'device_class': None,
+        'state_class': 'measurement',
+        'icon': 'mdi:flash',
+    },
+    3: {
+        'key': 'ph',
+        'device_class': None,
+        'state_class': 'measurement',
+        'icon': 'mdi:flask-outline',
+    },
+    4: {
+        'key': 'nitrogen',
+        'device_class': None,
+        'state_class': 'measurement',
+        'icon': 'mdi:leaf',
+    },
+    5: {
+        'key': 'phosphorus',
+        'device_class': None,
+        'state_class': 'measurement',
+        'icon': 'mdi:atom',
+    },
+    6: {
+        'key': 'potassium',
+        'device_class': None,
+        'state_class': 'measurement',
+        'icon': 'mdi:periodic-table',
+    },
+    7: {
+        'key': 'salinity',
+        'device_class': None,
+        'state_class': 'measurement',
+        'icon': 'mdi:waves',
+    },
+}
+
+API_DEVICE_INFO = {
+    'identifier': '8sense-soil-sensor-api',
+    'name': '8sense Soil Sensor',
+    'manufacturer': '8sense',
+    'model': 'Soil Sensor API',
+    'sw_version': '2.1.0',
+}
+
 READINGS = DEFAULT_READINGS[:]
 CONFIG_FILE = os.path.expanduser("~/.8sense_config.json")
 
@@ -277,6 +336,32 @@ def update_readings(names, enabled):
         if i < len(names) and i < len(enabled) and enabled[i]:
             READINGS.append((i, names[i], unit, scale, min_w, max_w))
 
+
+def build_sensor_catalog():
+    """Build stable sensor metadata for the active set."""
+    names, enabled = get_active_set_data()
+    catalog = []
+
+    for index, (default_name, unit, _scale, min_w, max_w) in enumerate(DEFAULT_READINGS):
+        meta = HOME_ASSISTANT_SENSOR_META.get(index, {})
+        current_name = names[index] if index < len(names) else default_name
+        is_enabled = enabled[index] if index < len(enabled) else True
+        catalog.append({
+            'key': meta.get('key', f'sensor_{index + 1}'),
+            'source_index': index,
+            'default_name': default_name,
+            'name': current_name,
+            'unit': unit,
+            'min': min_w,
+            'max': max_w,
+            'enabled': is_enabled,
+            'device_class': meta.get('device_class'),
+            'state_class': meta.get('state_class'),
+            'icon': meta.get('icon'),
+        })
+
+    return catalog
+
 def get_sensor_value_by_default_index(values, default_index):
     """Return a sensor value by its original DEFAULT_READINGS index."""
     if not values:
@@ -489,17 +574,48 @@ def build_sensor_payload(values):
     if values is None:
         return sensor_values
 
-    for (_, name, unit, _, min_w, max_w), value in zip(READINGS, values):
+    for (source_index, name, unit, _, min_w, max_w), value in zip(READINGS, values):
+        meta = HOME_ASSISTANT_SENSOR_META.get(source_index, {})
         sensor_values.append({
+            'key': meta.get('key', f'sensor_{source_index + 1}'),
+            'source_index': source_index,
+            'default_name': DEFAULT_READINGS[source_index][0],
             'name': name,
             'unit': unit,
             'value': value,
             'min': min_w,
             'max': max_w,
+            'device_class': meta.get('device_class'),
+            'state_class': meta.get('state_class'),
+            'icon': meta.get('icon'),
             'status': 'unavailable' if value is None else ('good' if min_w <= value <= max_w else 'warning')
         })
 
     return sensor_values
+
+
+def build_homeassistant_payload():
+    """Build a device-oriented payload optimized for Home Assistant polling."""
+    sensor_values = build_sensor_payload(current_values)
+    npk_analysis = build_npk_analysis(current_values)
+    crops = build_crop_recommendations(current_values)
+    top_crop = crops[0] if crops else None
+    set_name = SENSOR_SETS.get(ACTIVE_SET, {}).get('name', f'Set {ACTIVE_SET + 1}')
+
+    return {
+        'device': API_DEVICE_INFO,
+        'available': current_values is not None and not sensor_status.startswith('✗'),
+        'status': sensor_status,
+        'last_update': last_update,
+        'active_set': {
+            'id': ACTIVE_SET,
+            'name': set_name,
+        },
+        'sensor_catalog': build_sensor_catalog(),
+        'entities': sensor_values,
+        'npk_analysis': npk_analysis,
+        'top_crop': top_crop,
+    }
 
 
 def build_crop_recommendations(values):
@@ -831,6 +947,11 @@ def get_data():
         'operation_mode': OPERATION_MODE,
         'sensor_poll_interval': SENSOR_POLL_INTERVAL,
         'last_update': last_update,
+        'active_set': {
+            'id': ACTIVE_SET,
+            'name': SENSOR_SETS.get(ACTIVE_SET, {}).get('name', f'Set {ACTIVE_SET + 1}'),
+        },
+        'sensor_catalog': build_sensor_catalog(),
         'values': sensor_values,
         'crops': crops,
         'npk_analysis': npk_analysis,
@@ -839,6 +960,12 @@ def get_data():
         'history': serialized_history_ranges.get('day', []),
         'history_ranges': serialized_history_ranges
     })
+
+
+@app.route('/api/homeassistant', methods=['GET'])
+def get_homeassistant_data():
+    """Get a Home Assistant-friendly device payload."""
+    return jsonify(build_homeassistant_payload())
 
 @app.route('/api/set/<int:set_id>', methods=['POST'])
 def set_active_set(set_id):
